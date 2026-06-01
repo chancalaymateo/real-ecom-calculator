@@ -169,6 +169,34 @@
 .configSelect:focus { outline: none; border-color: var(--accent-bright); }
 .configSelect option { background: #1a2040; }
 
+/* CPA campaña input en config bar */
+.cpaInput {
+  display: flex;
+  align-items: center;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--dark-border-2);
+  border-radius: 6px;
+  padding: 0 0.5rem;
+  gap: 0.2rem;
+  transition: border-color 140ms;
+}
+.cpaInput:focus-within { border-color: var(--accent-bright); }
+.cpaInputPre { font-size: 0.75rem; color: var(--text-muted); flex-shrink: 0; }
+.cpaInputField {
+  width: 70px;
+  padding: 0.35rem 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-bright);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+.cpaInputField::placeholder { color: var(--text-muted); font-weight: 400; }
+.cpaInputField::-webkit-outer-spin-button,
+.cpaInputField::-webkit-inner-spin-button { -webkit-appearance: none; }
+.cpaInputField[type=number] { -moz-appearance: textfield; }
+
 /* MP badge */
 .mpBadge {
   display: flex;

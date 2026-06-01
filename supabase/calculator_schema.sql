@@ -51,8 +51,8 @@ insert into calc_offers (id, name, quantity_label, sale_price, product_cost, cpa
 values
   (1, 'Oferta 1', '1 unidad',      49390.00,  6000.00,  16.00, 1),
   (2, 'Oferta 2', '120 cápsulas',  59990.00,  12000.00, 17.30, 2),
-  (3, 'Oferta 3', '180 cápsulas',  69990.00,  18000.00, 21.85, 3),
-  (4, 'Oferta 4', '360 cápsulas',  109290.00, 36000.00, 29.30, 4)
+  (3, 'Oferta 3', '180 cápsulas',  69990.00,  18000.00, 18.30, 3),
+  (4, 'Oferta 4', '360 cápsulas',  109290.00, 36000.00, 26.30, 4)
 on conflict (id) do nothing;
 
 -- ============================================================

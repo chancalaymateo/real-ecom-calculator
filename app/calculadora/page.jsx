@@ -8,7 +8,7 @@ const fmt    = (n) => new Intl.NumberFormat("es-AR", { style: "currency", curren
 const fmtUSD = (n) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 const fmtPct = (n) => `${Number(n).toFixed(2)}%`;
 
-const STORAGE_KEY = "calc_v5";
+const STORAGE_KEY = "calc_v6";
 const PRESETS_KEY = "calc_presets_v1";
 
 const BASE_FEE_OPTIONS = [
@@ -70,27 +70,29 @@ function calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
 }
 
 // ─── Offer Card ──────────────────────────────────────────────
-function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts, cpaUnit, onChange, onToggleHide }) {
+function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts, cpaUnit, campaignCPA, onChange, onToggleHide }) {
   const hidden  = offer.hidden;
   const c       = calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts });
 
-  // CPA objetivo = Santi's target per offer (max CPA we want to pay)
-  const objetivo    = Number(offer.cpa_be_target) || 0;
-  // CPA BE = what we can afford = formula result
-  const cpaBE_USD   = c.cpaBeUSD;
-  const cpaBE       = cpaUnit === "ars" ? c.cpaBeARS : cpaBE_USD;
-  const fmtCPA      = cpaUnit === "ars" ? fmt : fmtUSD;
-  const cpaLabel    = cpaUnit === "ars" ? "CPA BE (ARS)" : "CPA BE (USD)";
-  // ok = formula says we can afford the target CPA
-  const ok          = cpaBE_USD !== null && objetivo > 0 && cpaBE_USD >= objetivo;
+  // CPA objetivo = Santi's fixed target per offer
+  const objetivo  = Number(offer.cpa_be_target) || 0;
+  // CPA BE = formula result (max we can afford)
+  const cpaBE_USD = c.cpaBeUSD;
+  const cpaBE     = cpaUnit === "ars" ? c.cpaBeARS : cpaBE_USD;
+  const fmtCPA    = cpaUnit === "ars" ? fmt : fmtUSD;
+  const cpaLabel  = cpaUnit === "ars" ? "CPA BE (ARS)" : "CPA BE (USD)";
 
-  // Margin = net profit after paying target CPA
-  const objetivoARS = objetivo > 0 && cryptoRate > 0 ? objetivo * cryptoRate : 0;
-  const netProfit   = c.disponible - objetivoARS;
+  // ok = global campaign CPA is within the formula break-even
+  const hasCPA   = campaignCPA > 0;
+  const ok       = hasCPA && cpaBE_USD !== null && cpaBE_USD >= campaignCPA;
+
+  // Margin = net profit after paying actual campaign CPA
+  const campaignARS = hasCPA && cryptoRate > 0 ? campaignCPA * cryptoRate : 0;
+  const netProfit   = c.disponible - campaignARS;
   const netMargin   = c.salePrice > 0 ? (netProfit / c.salePrice) * 100 : 0;
 
   return (
-    <div className={`${styles.offerCard} ${objetivo > 0 ? (ok ? styles.offerOk : styles.offerBad) : ""} ${hidden ? styles.offerHidden : ""}`}>
+    <div className={`${styles.offerCard} ${hasCPA ? (ok ? styles.offerOk : styles.offerBad) : ""} ${hidden ? styles.offerHidden : ""}`}>
       {/* Header editable */}
       <div className={styles.offerHeader}>
         <div className={styles.offerTitles}>
@@ -98,7 +100,7 @@ function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
           <input className={styles.qtyInput}  value={offer.quantity_label} onChange={(e) => onChange({ ...offer, quantity_label: e.target.value })} placeholder="Cantidad" />
         </div>
         <div className={styles.offerHeaderRight}>
-          {objetivo > 0 && (
+          {hasCPA && (
             <span className={`${styles.offerBadge} ${ok ? styles.badgeOk : styles.badgeBad}`}>{ok ? "OK" : "ALTO"}</span>
           )}
           <button className={styles.hideBtn} onClick={() => onToggleHide(offer.id)} title={hidden ? "Mostrar" : "Ocultar"}>
@@ -123,27 +125,12 @@ function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
           </div>
         </div>
 
-        {/* Costo producto + CPA objetivo — misma fila 3/4 + 1/4 */}
-        <div className={styles.inputRowDouble}>
-          <div>
-            <label className={styles.inputLabel}>Costo producto</label>
-            <div className={styles.moneyBox}>
-              <span className={styles.moneyPre}>$</span>
-              <MoneyInput value={offer.product_cost} onChange={(v) => onChange({ ...offer, product_cost: v })} placeholder="0" className={styles.moneyField} />
-            </div>
-          </div>
-          <div>
-            <label className={styles.inputLabel}>CPA</label>
-            <div className={styles.moneyBox}>
-              <span className={styles.moneyPre}>$</span>
-              <input
-                type="number" step="0.01"
-                value={offer.cpa_be_target || ""}
-                onChange={(e) => onChange({ ...offer, cpa_be_target: e.target.value })}
-                placeholder="0.00"
-                className={`${styles.moneyField} ${styles.moneyFieldCpa}`}
-              />
-            </div>
+        {/* Costo producto */}
+        <div className={styles.inputRow}>
+          <label className={styles.inputLabel}>Costo producto</label>
+          <div className={styles.moneyBox}>
+            <span className={styles.moneyPre}>$</span>
+            <MoneyInput value={offer.product_cost} onChange={(v) => onChange({ ...offer, product_cost: v })} placeholder="0" className={styles.moneyField} />
           </div>
         </div>
 
@@ -167,7 +154,7 @@ function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
           <div className={styles.cpaRow}>
             <div>
               <p className={styles.cpaLabel}>{cpaLabel}</p>
-              <p className={`${styles.cpaValue} ${objetivo > 0 ? (ok ? styles.cpaOk : styles.cpaBad) : ""}`}>
+              <p className={`${styles.cpaValue} ${hasCPA ? (ok ? styles.cpaOk : styles.cpaBad) : ""}`}>
                 {cpaBE === null ? "—" : fmtCPA(cpaBE)}
               </p>
             </div>
@@ -198,6 +185,7 @@ export default function CalculadoraPage() {
   const [fixedCosts, setFixedCosts]   = useState([]);
   const [presets, setPresets]         = useState([]);
   const [presetName, setPresetName]   = useState("");
+  const [campaignCPA, setCampaignCPA] = useState(0);
 
   const loadFromDB = useCallback(async () => {
     const res = await fetch("/api/calculator");
@@ -224,10 +212,11 @@ export default function CalculadoraPage() {
         if (loaded) {
           setSettings(loaded.settings || dbData.settings);
           setOffers(loaded.offers    || dbData.offers);
-          if (loaded.baseFeeKey) setBaseFeeKey(loaded.baseFeeKey);
-          if (loaded.cuotasKey  !== undefined) setCuotasKey(loaded.cuotasKey);
-          if (loaded.cpaUnit)    setCpaUnit(loaded.cpaUnit);
-          if (loaded.fixedCosts) setFixedCosts(loaded.fixedCosts);
+          if (loaded.baseFeeKey)              setBaseFeeKey(loaded.baseFeeKey);
+          if (loaded.cuotasKey !== undefined) setCuotasKey(loaded.cuotasKey);
+          if (loaded.cpaUnit)                 setCpaUnit(loaded.cpaUnit);
+          if (loaded.fixedCosts)              setFixedCosts(loaded.fixedCosts);
+          if (loaded.campaignCPA)             setCampaignCPA(loaded.campaignCPA);
         } else {
           setSettings(dbData.settings);
           setOffers(dbData.offers);
@@ -246,20 +235,20 @@ export default function CalculadoraPage() {
 
   // Auto-save to localStorage
   const getConfigSnapshot = useCallback(() => ({
-    settings, offers, baseFeeKey, cuotasKey, cpaUnit, fixedCosts,
-  }), [settings, offers, baseFeeKey, cuotasKey, cpaUnit, fixedCosts]);
+    settings, offers, baseFeeKey, cuotasKey, cpaUnit, fixedCosts, campaignCPA,
+  }), [settings, offers, baseFeeKey, cuotasKey, cpaUnit, fixedCosts, campaignCPA]);
 
   useEffect(() => {
     if (!settings) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(getConfigSnapshot()));
-  }, [settings, offers, baseFeeKey, cuotasKey, cpaUnit, fixedCosts, getConfigSnapshot]);
+  }, [settings, offers, baseFeeKey, cuotasKey, cpaUnit, fixedCosts, campaignCPA, getConfigSnapshot]);
 
   // Reset
   async function handleReset() {
     try {
       const data = await loadFromDB();
       setSettings(data.settings); setOffers(data.offers);
-      setBaseFeeKey("ml_fee_10dias"); setCuotasKey(null); setCpaUnit("usd"); setFixedCosts([]);
+      setBaseFeeKey("ml_fee_10dias"); setCuotasKey(null); setCpaUnit("usd"); setFixedCosts([]); setCampaignCPA(0);
       localStorage.removeItem(STORAGE_KEY);
       toast.success("Valores restablecidos");
     } catch (e) { toast.error(e.message); }
@@ -281,6 +270,7 @@ export default function CalculadoraPage() {
     setCuotasKey(p.cuotasKey ?? null);
     setCpaUnit(p.cpaUnit || "usd");
     setFixedCosts(p.fixedCosts || []);
+    if (p.campaignCPA !== undefined) setCampaignCPA(p.campaignCPA);
     toast.success(`Set cargado`);
   }
   function deletePreset(id) {
@@ -353,6 +343,19 @@ export default function CalculadoraPage() {
               <select value={cuotasKey || ""} onChange={(e) => setCuotasKey(e.target.value || null)} className={styles.configSelect}>
                 {CUOTAS_OPTIONS.map((o) => <option key={o.key || "none"} value={o.key || ""}>{o.label}{o.key ? ` (+${fmtPct(settings?.[o.key] || 0)})` : ""}</option>)}
               </select>
+            </div>
+            <div className={styles.configGroup}>
+              <label className={styles.configLabel}>CPA campaña (USD)</label>
+              <div className={styles.cpaInput}>
+                <span className={styles.cpaInputPre}>$</span>
+                <input
+                  type="number" step="0.01"
+                  value={campaignCPA || ""}
+                  onChange={(e) => setCampaignCPA(Number(e.target.value) || 0)}
+                  placeholder="0.00"
+                  className={styles.cpaInputField}
+                />
+              </div>
             </div>
             <div className={styles.mpBadge}>
               MP efectivo: <strong>{fmtPct(mpEfect)}</strong>
@@ -493,6 +496,7 @@ export default function CalculadoraPage() {
               cryptoRate={cryptoRate}
               fixedCosts={fixedCosts}
               cpaUnit={cpaUnit}
+              campaignCPA={campaignCPA}
               onChange={updateOffer}
               onToggleHide={toggleHide}
             />
@@ -516,17 +520,18 @@ export default function CalculadoraPage() {
                     const c          = calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts });
                     const objetivo   = Number(offer.cpa_be_target) || 0;
                     const cpaBE      = cpaUnit === "ars" ? c.cpaBeARS : c.cpaBeUSD;
-                    const ok         = objetivo > 0 && c.cpaBeUSD !== null && c.cpaBeUSD >= objetivo;
+                    const hasCPA     = campaignCPA > 0;
+                    const ok         = hasCPA && c.cpaBeUSD !== null && c.cpaBeUSD >= campaignCPA;
                     const fmtCPA     = cpaUnit === "ars" ? fmt : fmtUSD;
-                    const objARS     = objetivo > 0 && cryptoRate > 0 ? objetivo * cryptoRate : 0;
-                    const netProfit  = c.disponible - objARS;
+                    const campARS    = hasCPA && cryptoRate > 0 ? campaignCPA * cryptoRate : 0;
+                    const netProfit  = c.disponible - campARS;
                     const netMargin  = c.salePrice > 0 ? (netProfit / c.salePrice * 100) : 0;
                     return (
                       <tr key={offer.id}>
                         <td><strong style={{ color: "var(--text-bright)" }}>{offer.name}</strong><br /><small style={{ color: "var(--text-muted)" }}>{offer.quantity_label}</small></td>
                         <td style={{ color: "var(--text-bright)" }}>{fmt(c.salePrice)}</td>
                         <td>{fmt(c.totalCosts)}</td>
-                        <td><strong style={{ color: objetivo > 0 ? (ok ? "var(--success)" : "var(--danger)") : "var(--text-mid)" }}>{cpaBE === null ? "—" : fmtCPA(cpaBE)}</strong></td>
+                        <td><strong style={{ color: hasCPA ? (ok ? "var(--success)" : "var(--danger)") : "var(--text-mid)" }}>{cpaBE === null ? "—" : fmtCPA(cpaBE)}</strong></td>
                         <td>{objetivo > 0 ? fmtUSD(objetivo) : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
                         <td><strong style={{ color: netProfit >= 0 ? "var(--success)" : "var(--danger)" }}>{fmt(netProfit)}</strong></td>
                         <td style={{ color: netMargin >= 0 ? "var(--text-mid)" : "var(--danger)" }}>{netMargin.toFixed(1)}%</td>

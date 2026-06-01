@@ -18,8 +18,8 @@ const DEFAULT_SETTINGS = {
 const DEFAULT_OFFERS = [
   { id: 1, name: "Oferta 1", quantity_label: "1 unidad",      sale_price: 49390,  product_cost: 6000,  cpa_be_target: 16.00, sort_order: 1 },
   { id: 2, name: "Oferta 2", quantity_label: "120 cápsulas",  sale_price: 59990,  product_cost: 12000, cpa_be_target: 17.30, sort_order: 2 },
-  { id: 3, name: "Oferta 3", quantity_label: "180 cápsulas",  sale_price: 69990,  product_cost: 18000, cpa_be_target: 21.85, sort_order: 3 },
-  { id: 4, name: "Oferta 4", quantity_label: "360 cápsulas",  sale_price: 109290, product_cost: 36000, cpa_be_target: 29.30, sort_order: 4 },
+  { id: 3, name: "Oferta 3", quantity_label: "180 cápsulas",  sale_price: 69990,  product_cost: 18000, cpa_be_target: 18.30, sort_order: 3 },
+  { id: 4, name: "Oferta 4", quantity_label: "360 cápsulas",  sale_price: 109290, product_cost: 36000, cpa_be_target: 26.30, sort_order: 4 },
 ];
 
 // GET — datos públicos: settings + offers (con fallback a defaults si Supabase falla)
