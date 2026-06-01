@@ -508,7 +508,7 @@ export default function CalculadoraPage() {
                 <thead>
                   <tr>
                     <th>Oferta</th><th>Precio</th><th>Costos</th>
-                    <th>CPA BE disponible</th><th>CPA campaña</th><th>Margen</th>
+                    <th>CPA BE disponible</th><th>Objetivo</th><th>Ganancia (ARS)</th><th>Margen</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -519,7 +519,8 @@ export default function CalculadoraPage() {
                     const ok         = objetivo > 0 && c.cpaBeUSD !== null && c.cpaBeUSD >= objetivo;
                     const fmtCPA     = cpaUnit === "ars" ? fmt : fmtUSD;
                     const objARS     = objetivo > 0 && cryptoRate > 0 ? objetivo * cryptoRate : 0;
-                    const netMargin  = c.salePrice > 0 ? ((c.disponible - objARS) / c.salePrice * 100) : 0;
+                    const netProfit  = c.disponible - objARS;
+                    const netMargin  = c.salePrice > 0 ? (netProfit / c.salePrice * 100) : 0;
                     return (
                       <tr key={offer.id}>
                         <td><strong style={{ color: "var(--text-bright)" }}>{offer.name}</strong><br /><small style={{ color: "var(--text-muted)" }}>{offer.quantity_label}</small></td>
@@ -527,6 +528,7 @@ export default function CalculadoraPage() {
                         <td>{fmt(c.totalCosts)}</td>
                         <td><strong style={{ color: objetivo > 0 ? (ok ? "var(--success)" : "var(--danger)") : "var(--text-mid)" }}>{cpaBE === null ? "—" : fmtCPA(cpaBE)}</strong></td>
                         <td>{objetivo > 0 ? fmtUSD(objetivo) : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
+                        <td><strong style={{ color: netProfit >= 0 ? "var(--success)" : "var(--danger)" }}>{fmt(netProfit)}</strong></td>
                         <td style={{ color: netMargin >= 0 ? "var(--text-mid)" : "var(--danger)" }}>{netMargin.toFixed(1)}%</td>
                       </tr>
                     );

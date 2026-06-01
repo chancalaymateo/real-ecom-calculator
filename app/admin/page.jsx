@@ -44,7 +44,7 @@ function LoginGate({ onLogin }) {
           <input className={styles.loginInput} type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="••••••" />
           <button type="submit" className={styles.loginBtn}>Ingresar</button>
         </form>
-        <a href="/calculadora" className={styles.backLink}>← Volver a la calculadora</a>
+        <a href="/" className={styles.backLink}>← Volver a la calculadora</a>
       </div>
     </div>
   );
@@ -149,7 +149,7 @@ export default function AdminPage() {
                 </div>
               </div>
             )}
-            <a href="/calculadora" className={`${styles.btnDark}`}>Ver calculadora</a>
+            <a href="/" className={`${styles.btnDark}`}>Ver calculadora</a>
           </div>
         </div>
       </header>
