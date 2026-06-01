@@ -345,28 +345,27 @@ export default function CalculadoraPage() {
               </select>
             </div>
             <div className={styles.configGroup}>
-              <label className={styles.configLabel}>CPA campaña (USD)</label>
-              <div className={styles.cpaInput}>
-                <span className={styles.cpaInputPre}>$</span>
-                <input
-                  type="number" step="0.01"
-                  value={campaignCPA || ""}
-                  onChange={(e) => setCampaignCPA(Number(e.target.value) || 0)}
-                  placeholder="0.00"
-                  className={styles.cpaInputField}
-                />
+              <label className={styles.configLabel}>CPA campaña</label>
+              <div className={styles.cpaCombo}>
+                <div className={styles.toggleGroup}>
+                  <button className={`${styles.togBtn} ${cpaUnit === "usd" ? styles.togActive : ""}`} onClick={() => setCpaUnit("usd")}>USD</button>
+                  <button className={`${styles.togBtn} ${cpaUnit === "ars" ? styles.togActive : ""}`} onClick={() => setCpaUnit("ars")}>ARS</button>
+                </div>
+                <div className={styles.cpaInput}>
+                  <span className={styles.cpaInputPre}>$</span>
+                  <input
+                    type="number" step="0.01"
+                    value={campaignCPA || ""}
+                    onChange={(e) => setCampaignCPA(Number(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className={styles.cpaInputField}
+                  />
+                </div>
               </div>
             </div>
             <div className={styles.mpBadge}>
               MP efectivo: <strong>{fmtPct(mpEfect)}</strong>
               <span className={styles.mpNote}> (neto {fmtPct(mpNet)} + IVA {MP_IVA}%)</span>
-            </div>
-            <div className={styles.cpaToggleWrap}>
-              <label className={styles.configLabel}>CPA BE en</label>
-              <div className={styles.toggleGroup}>
-                <button className={`${styles.togBtn} ${cpaUnit === "usd" ? styles.togActive : ""}`} onClick={() => setCpaUnit("usd")}>USD</button>
-                <button className={`${styles.togBtn} ${cpaUnit === "ars" ? styles.togActive : ""}`} onClick={() => setCpaUnit("ars")}>ARS</button>
-              </div>
             </div>
           </div>
           <div className={styles.configBarRight}>
