@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 export const metadata = {
   title: "Real Ecom Calculator",
   description: "Calculadora de rentabilidad para MercadoPago",
+  icons: { icon: "/logos/ico.png" },
 };
 
 export default function RootLayout({ children }) {

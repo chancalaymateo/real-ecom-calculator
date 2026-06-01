@@ -71,36 +71,34 @@ function calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
 
 // ─── Offer Card ──────────────────────────────────────────────
 function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts, cpaUnit, campaignCPA, onChange, onToggleHide }) {
-  const hidden  = offer.hidden;
-  const c       = calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts });
+  const hidden    = offer.hidden;
+  const c         = calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts });
 
-  // CPA objetivo = Santi's fixed target per offer
   const objetivo  = Number(offer.cpa_be_target) || 0;
-  // CPA BE = formula result (max we can afford)
   const cpaBE_USD = c.cpaBeUSD;
   const cpaBE     = cpaUnit === "ars" ? c.cpaBeARS : cpaBE_USD;
   const fmtCPA    = cpaUnit === "ars" ? fmt : fmtUSD;
   const cpaLabel  = cpaUnit === "ars" ? "CPA BE (ARS)" : "CPA BE (USD)";
 
-  // ok = global campaign CPA is within the formula break-even
-  const hasCPA   = campaignCPA > 0;
-  const ok       = hasCPA && cpaBE_USD !== null && cpaBE_USD >= campaignCPA;
+  // Badge/color: siempre compara CPA BE vs objetivo (independiente de si hay campaña)
+  const hasObj  = objetivo > 0;
+  const ok      = hasObj && cpaBE_USD !== null && cpaBE_USD >= objetivo;
+  const colorClass = hasObj ? (ok ? styles.cpaOk : styles.cpaBad) : styles.cpaOk;
 
-  // Margin = net profit after paying actual campaign CPA
-  const campaignARS = hasCPA && cryptoRate > 0 ? campaignCPA * cryptoRate : 0;
+  // Margen: descuenta CPA campaña si está cargado, si no muestra disponible limpio
+  const campaignARS = campaignCPA > 0 && cryptoRate > 0 ? campaignCPA * cryptoRate : 0;
   const netProfit   = c.disponible - campaignARS;
   const netMargin   = c.salePrice > 0 ? (netProfit / c.salePrice) * 100 : 0;
 
   return (
-    <div className={`${styles.offerCard} ${hasCPA ? (ok ? styles.offerOk : styles.offerBad) : ""} ${hidden ? styles.offerHidden : ""}`}>
-      {/* Header editable */}
+    <div className={`${styles.offerCard} ${hasObj ? (ok ? styles.offerOk : styles.offerBad) : ""} ${hidden ? styles.offerHidden : ""}`}>
       <div className={styles.offerHeader}>
         <div className={styles.offerTitles}>
           <input className={styles.nameInput} value={offer.name} onChange={(e) => onChange({ ...offer, name: e.target.value })} placeholder="Nombre" />
           <input className={styles.qtyInput}  value={offer.quantity_label} onChange={(e) => onChange({ ...offer, quantity_label: e.target.value })} placeholder="Cantidad" />
         </div>
         <div className={styles.offerHeaderRight}>
-          {hasCPA && (
+          {hasObj && (
             <span className={`${styles.offerBadge} ${ok ? styles.badgeOk : styles.badgeBad}`}>{ok ? "OK" : "ALTO"}</span>
           )}
           <button className={styles.hideBtn} onClick={() => onToggleHide(offer.id)} title={hidden ? "Mostrar" : "Ocultar"}>
@@ -116,7 +114,6 @@ function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
       )}
 
       <div className={hidden ? styles.hiddenContent : ""}>
-        {/* Precio de venta */}
         <div className={styles.inputRow}>
           <label className={styles.inputLabel}>Precio de venta</label>
           <div className={styles.moneyBox}>
@@ -125,7 +122,6 @@ function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
           </div>
         </div>
 
-        {/* Costo producto */}
         <div className={styles.inputRow}>
           <label className={styles.inputLabel}>Costo producto</label>
           <div className={styles.moneyBox}>
@@ -134,7 +130,6 @@ function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
           </div>
         </div>
 
-        {/* Breakdown */}
         <div className={styles.breakdown}>
           <div className={styles.bRow}><span>Envío</span><span>{fmt(c.shipping)}</span></div>
           <div className={styles.bRow}><span>MP {fmtPct(c.mpNet)} + IVA</span><span>{fmt(c.costMP)}</span></div>
@@ -149,18 +144,26 @@ function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
           <div className={`${styles.bRow} ${styles.bTotal}`}><span>Total costos</span><span>{fmt(c.totalCosts)}</span></div>
         </div>
 
-        {/* CPA BE result */}
         <div className={styles.cpaSection}>
           <div className={styles.cpaRow}>
             <div>
               <p className={styles.cpaLabel}>{cpaLabel}</p>
-              <p className={`${styles.cpaValue} ${hasCPA ? (ok ? styles.cpaOk : styles.cpaBad) : ""}`}>
+              <p className={`${styles.cpaValue} ${colorClass}`}>
                 {cpaBE === null ? "—" : fmtCPA(cpaBE)}
               </p>
             </div>
             <div style={{ textAlign: "right" }}>
-              <p className={styles.cpaLabel}>Objetivo</p>
-              <p className={styles.cpaTargetValue}>{objetivo > 0 ? fmtUSD(objetivo) : "—"}</p>
+              <p className={styles.cpaLabel}>Objetivo (USD)</p>
+              <div className={`${styles.moneyBox} ${styles.moneyBoxRight}`}>
+                <span className={styles.moneyPre}>$</span>
+                <input
+                  type="number" step="0.01"
+                  value={offer.cpa_be_target || ""}
+                  onChange={(e) => onChange({ ...offer, cpa_be_target: e.target.value })}
+                  placeholder="0.00"
+                  className={`${styles.moneyField} ${styles.moneyFieldCpa}`}
+                />
+              </div>
             </div>
           </div>
           <p className={styles.margin}>Margen: <strong>{netMargin.toFixed(1)}%</strong></p>
@@ -519,10 +522,9 @@ export default function CalculadoraPage() {
                     const c          = calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts });
                     const objetivo   = Number(offer.cpa_be_target) || 0;
                     const cpaBE      = cpaUnit === "ars" ? c.cpaBeARS : c.cpaBeUSD;
-                    const hasCPA     = campaignCPA > 0;
-                    const ok         = hasCPA && c.cpaBeUSD !== null && c.cpaBeUSD >= campaignCPA;
+                    const ok         = objetivo > 0 && c.cpaBeUSD !== null && c.cpaBeUSD >= objetivo;
                     const fmtCPA     = cpaUnit === "ars" ? fmt : fmtUSD;
-                    const campARS    = hasCPA && cryptoRate > 0 ? campaignCPA * cryptoRate : 0;
+                    const campARS    = campaignCPA > 0 && cryptoRate > 0 ? campaignCPA * cryptoRate : 0;
                     const netProfit  = c.disponible - campARS;
                     const netMargin  = c.salePrice > 0 ? (netProfit / c.salePrice * 100) : 0;
                     return (
@@ -530,7 +532,7 @@ export default function CalculadoraPage() {
                         <td><strong style={{ color: "var(--text-bright)" }}>{offer.name}</strong><br /><small style={{ color: "var(--text-muted)" }}>{offer.quantity_label}</small></td>
                         <td style={{ color: "var(--text-bright)" }}>{fmt(c.salePrice)}</td>
                         <td>{fmt(c.totalCosts)}</td>
-                        <td><strong style={{ color: hasCPA ? (ok ? "var(--success)" : "var(--danger)") : "var(--text-mid)" }}>{cpaBE === null ? "—" : fmtCPA(cpaBE)}</strong></td>
+                        <td><strong style={{ color: objetivo > 0 ? (ok ? "var(--success)" : "var(--danger)") : "var(--text-mid)" }}>{cpaBE === null ? "—" : fmtCPA(cpaBE)}</strong></td>
                         <td>{objetivo > 0 ? fmtUSD(objetivo) : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
                         <td><strong style={{ color: netProfit >= 0 ? "var(--success)" : "var(--danger)" }}>{fmt(netProfit)}</strong></td>
                         <td style={{ color: netMargin >= 0 ? "var(--text-mid)" : "var(--danger)" }}>{netMargin.toFixed(1)}%</td>
