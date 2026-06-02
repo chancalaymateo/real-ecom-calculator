@@ -8,7 +8,7 @@ const fmt    = (n) => new Intl.NumberFormat("es-AR", { style: "currency", curren
 const fmtUSD = (n) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 const fmtPct = (n) => `${Number(n).toFixed(2)}%`;
 
-const STORAGE_KEY = "calc_v6";
+const STORAGE_KEY = "calc_v7";
 const PRESETS_KEY = "calc_presets_v1";
 
 const BASE_FEE_OPTIONS = [
@@ -154,14 +154,14 @@ function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
             </div>
             <div style={{ textAlign: "right" }}>
               <p className={styles.cpaLabel}>Objetivo (USD)</p>
-              <div className={`${styles.moneyBox} ${styles.moneyBoxRight}`}>
-                <span className={styles.moneyPre}>$</span>
+              <div className={styles.objetivoWrap}>
+                <span className={styles.objetivoPre}>US$</span>
                 <input
                   type="number" step="0.01"
                   value={offer.cpa_be_target || ""}
                   onChange={(e) => onChange({ ...offer, cpa_be_target: e.target.value })}
                   placeholder="0.00"
-                  className={`${styles.moneyField} ${styles.moneyFieldCpa}`}
+                  className={styles.objetivoInput}
                 />
               </div>
             </div>

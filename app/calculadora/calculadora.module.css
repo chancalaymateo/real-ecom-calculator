@@ -781,6 +781,26 @@
 .cpaOk  { color: var(--success); text-shadow: 0 0 20px rgba(16,185,129,0.4); }
 .cpaBad { color: var(--danger);  text-shadow: 0 0 20px rgba(248,113,113,0.4); }
 .cpaTargetValue { font-size: 0.9375rem; font-weight: 700; color: var(--text-mid); }
+.objetivoWrap { display: flex; align-items: center; justify-content: flex-end; gap: 0.15rem; }
+.objetivoPre { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+.objetivoInput {
+  background: transparent;
+  border: none;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-mid);
+  text-align: right;
+  width: 64px;
+  outline: none;
+  padding: 0.1rem 0.2rem;
+  border-radius: 4px;
+  transition: background 140ms, color 140ms;
+}
+.objetivoInput:focus { background: rgba(255,255,255,0.06); color: var(--text-bright); }
+.objetivoInput::placeholder { color: var(--text-muted); font-weight: 400; }
+.objetivoInput::-webkit-outer-spin-button,
+.objetivoInput::-webkit-inner-spin-button { -webkit-appearance: none; }
+.objetivoInput[type=number] { -moz-appearance: textfield; }
 .margin { font-size: 0.6875rem; color: var(--text-muted); text-align: center; }
 
 /* ── Summary card ── */
