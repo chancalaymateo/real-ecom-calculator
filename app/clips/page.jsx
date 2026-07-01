@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { SCENES, SAMPLE_SCRIPT, parseScript } from "./scenes.js";
+import { SCENES, SAMPLE_SCRIPT, SAMPLE_CLIPS, parseScript } from "./scenes.js";
 import { uploadImage, generateAndWait } from "./api.js";
 import "./clips.css";
 
@@ -98,7 +98,7 @@ export default function ClipsPage() {
     const parsed = parseScript(bulkText);
     if (!parsed.length) {
       alert(
-        'No pude reconocer ninguna escena.\nAsegurate de que cada bloque empiece con algo tipo:\n"Escena 1 — Imagen 1 — 9 segundos"'
+        'No pude reconocer ningún bloque.\nAsegurate de que cada uno empiece con algo tipo:\n"Escena 1 — Imagen 1 — 9 segundos"  o  "Clip — Imagen 1 — 8 segundos"'
       );
       return;
     }
@@ -191,8 +191,10 @@ export default function ClipsPage() {
         <section className="card">
           <h2>1 · Pegá tu guión completo (opcional)</h2>
           <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            Pegá todo el texto tal cual (con las líneas <b>Escena N — Imagen N — X segundos</b>).
-            La app lo separa solo, elige la imagen y los segundos, y después corregís lo que quieras.
+            Pegá todo el texto tal cual. Cada bloque tiene que empezar con una línea tipo{" "}
+            <b>Escena N — Imagen N — X segundos</b> (con voz) o <b>Clip — Imagen N — X segundos</b>{" "}
+            (solo movimiento). La app lo separa solo, elige la imagen y los segundos, y después
+            corregís lo que quieras.
           </p>
           <textarea
             className="prompt"
@@ -202,11 +204,16 @@ export default function ClipsPage() {
             onChange={(e) => setBulkText(e.target.value)}
           />
           <div className="row-between" style={{ marginTop: 10, marginBottom: 0 }}>
-            <button className="btn" onClick={() => setBulkText(SAMPLE_SCRIPT)}>
-              Cargar guión de ejemplo
-            </button>
+            <div className="run-all">
+              <button className="btn" onClick={() => setBulkText(SAMPLE_SCRIPT)}>
+                Ejemplo con voz
+              </button>
+              <button className="btn" onClick={() => setBulkText(SAMPLE_CLIPS)}>
+                Ejemplo de clips
+              </button>
+            </div>
             <button className="btn primary" onClick={importScript}>
-              ✂ Separar en escenas
+              ✂ Separar en bloques
             </button>
           </div>
         </section>
@@ -286,7 +293,7 @@ export default function ClipsPage() {
 
         <section className="card">
           <div className="row-between">
-            <h2>4 · Escenas ({scenes.length})</h2>
+            <h2>4 · Escenas / Clips ({scenes.length})</h2>
             <div className="run-all">
               {missingCount > 0 && (
                 <span className="warn-pill">⚠ {missingCount} sin imagen</span>

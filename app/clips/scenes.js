@@ -71,29 +71,49 @@ export const SCENES = [
   },
 ];
 
-// Texto de ejemplo (todo el guión) para el cuadro de pegado.
+// Texto de ejemplo con voz (todo el guión) para el cuadro de pegado.
 export const SAMPLE_SCRIPT = SCENES.map(
   (s) => `Escena ${s.id} — Imagen 1 — ${s.duration} segundos\n${s.prompt}`
 ).join("\n\n");
 
-// Separa un guión pegado en escenas.
-// Reconoce encabezados tipo: "Escena 1 — Imagen 1 — 9 segundos"
-// (acepta guiones —, – o -). Todo lo que sigue hasta el próximo encabezado
-// es el prompt de esa escena.
+// Ejemplo de "clips" (solo movimiento, sin voz ni diálogo).
+export const SAMPLE_CLIPS = [
+  {
+    imagen: 1,
+    duration: 8,
+    prompt:
+      "Usá la imagen de referencia, mismo encuadre exacto. Cámara fija. La mano sostiene el frasco de Celuvit y lo rota levemente de un lado al otro, movimiento suave y continuo, como mostrando el frasco desde un ángulo ligeramente diferente y volviendo a la posición original. El movimiento es sutil, no exagerado, como si la persona lo estuviera girando apenas para mostrar la etiqueta. La mano se mantiene firme, solo el frasco rota levemente. Respetá la etiqueta de Celuvit idéntica a la imagen de referencia. Sin diálogo. Sin voz. 9:16 vertical.",
+  },
+  {
+    imagen: 2,
+    duration: 8,
+    prompt:
+      "Usá la imagen de referencia, mismo encuadre exacto. Cámara fija. Movimientos naturales y sutiles, sin cambiar la pose ni el encuadre. Mantené el producto firme y bien visible, con la etiqueta idéntica a la imagen de referencia. Sin diálogo. Sin voz. 9:16 vertical.",
+  },
+].map((c, i) => `Clip ${i + 1} — Imagen ${c.imagen} — ${c.duration} segundos\n${c.prompt}`).join("\n\n");
+
+// Separa un guión pegado en escenas o clips.
+// Reconoce encabezados tipo:
+//   "Escena 1 — Imagen 1 — 9 segundos"   (con voz)
+//   "Clip — Imagen 1 — 8 segundos"       (solo movimiento; el número es opcional)
+// Acepta guiones —, – o -. Todo lo que sigue hasta el próximo encabezado
+// es el prompt de ese bloque.
 export function parseScript(text) {
   const headerRe =
-    /Escena\s+(\d+)\s*[—–-]\s*Imagen\s+(\d+)\s*[—–-]\s*(\d+)\s*segundos[^\n]*/gi;
+    /(Escena|Clip)\s*(\d+)?\s*[—–-]\s*Imagen\s+(\d+)\s*[—–-]\s*(\d+)\s*segundos[^\n]*/gi;
   const matches = [...(text || "").matchAll(headerRe)];
   if (!matches.length) return [];
 
   return matches.map((m, i) => {
+    const keyword = /clip/i.test(m[1]) ? "Clip" : "Escena";
+    const num = Number(m[2]) || i + 1;
     const start = m.index + m[0].length;
     const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
     return {
-      id: Number(m[1]) || i + 1,
-      title: `Escena ${m[1] || i + 1}`,
-      imageIndex: Math.max(0, (Number(m[2]) || 1) - 1),
-      duration: Number(m[3]) || 9,
+      id: i + 1,
+      title: `${keyword} ${num}`,
+      imageIndex: Math.max(0, (Number(m[3]) || 1) - 1),
+      duration: Number(m[4]) || 9,
       prompt: text.slice(start, end).trim(),
     };
   });
