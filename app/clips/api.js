@@ -31,6 +31,13 @@ export async function createTask(body, apiKey) {
   return data.taskId;
 }
 
+export async function getCredits(apiKey) {
+  const r = await fetch("/api/clips/credits", { headers: headers(apiKey, false) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.detail || data.error || "Error leyendo el balance");
+  return data.credits;
+}
+
 export async function getStatus(taskId, apiKey) {
   const r = await fetch(`/api/clips/status/${encodeURIComponent(taskId)}`, {
     headers: headers(apiKey, false),

@@ -18,12 +18,47 @@
 .clip-generator .app { max-width: 920px; margin: 0 auto; padding: 24px 18px 64px; }
 .clip-generator .back-link {
   display: inline-flex; align-items: center; gap: 6px;
-  color: var(--muted); font-size: 13px; font-weight: 600; margin-bottom: 14px;
+  color: var(--muted); font-size: 13px; font-weight: 600; margin-bottom: 6px;
 }
 .clip-generator .back-link:hover { color: var(--text); }
-.clip-generator header h1 { margin: 0 0 4px; font-size: 26px; color: var(--text); }
-.clip-generator .sub { color: var(--muted); margin: 0 0 20px; }
-.clip-generator h2 { font-size: 16px; margin: 0 0 14px; color: var(--text); }
+.clip-generator header h1 { margin: 0; font-size: 24px; color: var(--text); }
+.clip-generator h2 { font-size: 15px; margin: 0 0 12px; color: var(--text); }
+
+/* header con balance + reset */
+.clip-generator .clip-header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.clip-generator .header-right { display: flex; align-items: center; gap: 10px; }
+.clip-generator .balance {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 12px;
+}
+.clip-generator .balance-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.clip-generator .balance-value { font-size: 14px; font-weight: 700; color: var(--ok); }
+.clip-generator .icon-btn {
+  background: transparent; border: none; color: var(--muted); cursor: pointer;
+  display: flex; align-items: center; padding: 2px; border-radius: 6px;
+}
+.clip-generator .icon-btn:hover:not(:disabled) { color: var(--text); }
+.clip-generator .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
+.clip-generator .spin { animation: clipspin .8s linear infinite; }
+@keyframes clipspin { to { transform: rotate(360deg); } }
+
+/* barra de ajustes compacta */
+.clip-generator .settings-bar {
+  display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding: 14px 18px;
+}
+.clip-generator .sfield { display: flex; flex-direction: column; gap: 5px; }
+.clip-generator .sfield.grow { flex: 1; min-width: 220px; }
+.clip-generator .sfield > span { font-size: 12px; color: var(--muted); }
+.clip-generator .sfield select { min-width: 92px; }
+.clip-generator .cost-pill {
+  font-size: 11px; font-weight: 700; color: #ffcf7a;
+  background: rgba(255, 178, 122, .12); border: 1px solid #5a3a26;
+  padding: 2px 8px; border-radius: 20px;
+}
 
 .clip-generator .card {
   background: var(--card);

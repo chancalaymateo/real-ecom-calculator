@@ -1,10 +1,9 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { SCENES, SAMPLE_SCRIPT, SAMPLE_CLIPS, parseScript } from "./scenes.js";
-import { uploadImage, generateAndWait } from "./api.js";
-import "./clips.css";
+import { ArrowLeft, RotateCcw, RefreshCw } from "lucide-react";
+import { parseScript } from "./scenes.js";
+import { uploadImage, generateAndWait, getCredits } from "./api.js";
 
 const MODES = ["fun", "normal", "spicy"];
 const RESOLUTIONS = ["480p", "720p"];
@@ -16,6 +15,15 @@ const STATE_LABEL = {
   success: "Listo ✅",
   fail: "Error ❌",
 };
+
+const DEFAULT_SETTINGS = {
+  mode: "normal",
+  resolution: "720p",
+  aspect_ratio: "9:16",
+  nsfw_checker: true,
+};
+
+const STORAGE_KEY = "clips_state_v1";
 
 let uid = 0;
 const nextId = () => ++uid;
@@ -32,6 +40,7 @@ function withRuntime(s, idx) {
     taskId: null,
     rawState: "",
     videoUrls: [],
+    cost: null,
     error: "",
   };
 }
@@ -39,25 +48,72 @@ function withRuntime(s, idx) {
 export default function ClipsPage() {
   const [apiKey, setApiKey] = useState("");
   const [images, setImages] = useState([]); // {id, name, preview, url, uploading, error}
-  const [settings, setSettings] = useState({
-    mode: "normal",
-    resolution: "720p",
-    aspect_ratio: "9:16",
-    nsfw_checker: true,
-  });
-  const [scenes, setScenes] = useState(() => SCENES.map(withRuntime));
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [scenes, setScenes] = useState([]); // arranca vacío
   const [bulkText, setBulkText] = useState("");
   const [running, setRunning] = useState(false);
+  const [balance, setBalance] = useState(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
   const fileRef = useRef(null);
+  const balanceRef = useRef(null); // último balance conocido, para calcular costo
+  const loaded = useRef(false);
 
-  // Cargar / guardar la API key en el navegador (sólo en cliente).
+  // ── Persistencia: cargar al montar ──
   useEffect(() => {
-    const saved = localStorage.getItem("kie_api_key");
-    if (saved) setApiKey(saved);
+    try {
+      const savedKey = localStorage.getItem("kie_api_key");
+      if (savedKey) setApiKey(savedKey);
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.settings) setSettings({ ...DEFAULT_SETTINGS, ...s.settings });
+        if (Array.isArray(s.scenes)) setScenes(s.scenes);
+        if (Array.isArray(s.images)) {
+          setImages(s.images.map((i) => ({ ...i, preview: i.url, uploading: false, error: "" })));
+        }
+      }
+    } catch {}
+    loaded.current = true;
   }, []);
+
+  // ── Persistencia: guardar en cada cambio ──
+  useEffect(() => {
+    if (!loaded.current) return;
+    try {
+      const imagesToSave = images.filter((i) => i.url).map((i) => ({ id: i.id, name: i.name, url: i.url }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ settings, scenes, images: imagesToSave }));
+    } catch {}
+  }, [settings, scenes, images]);
+
   useEffect(() => localStorage.setItem("kie_api_key", apiKey), [apiKey]);
 
-  const readyImages = useMemo(() => images.filter((i) => i.url), [images]);
+  // ── Balance ──
+  async function refreshBalance() {
+    if (!apiKey) {
+      setBalance(null);
+      balanceRef.current = null;
+      return;
+    }
+    setBalanceLoading(true);
+    try {
+      const c = await getCredits(apiKey);
+      setBalance(c);
+      balanceRef.current = c;
+    } catch {
+      // dejamos el balance como estaba
+    } finally {
+      setBalanceLoading(false);
+    }
+  }
+  // Refrescar el balance cuando hay/cambia la API key.
+  useEffect(() => {
+    if (apiKey) refreshBalance();
+    else {
+      setBalance(null);
+      balanceRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey]);
 
   function patchScene(id, patch) {
     setScenes((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -88,17 +144,13 @@ export default function ClipsPage() {
 
   function removeImage(id) {
     setImages((prev) => prev.filter((i) => i.id !== id));
-    // reajustar indices de escenas si quedaron fuera de rango
-    setScenes((prev) =>
-      prev.map((s) => (s.imageIndex >= images.length - 1 ? { ...s, imageIndex: 0 } : s))
-    );
   }
 
   function importScript() {
     const parsed = parseScript(bulkText);
     if (!parsed.length) {
       alert(
-        'No pude reconocer ningún bloque.\nAsegurate de que cada uno empiece con algo tipo:\n"Escena 1 — Imagen 1 — 9 segundos"  o  "Clip — Imagen 1 — 8 segundos"'
+        'No pude reconocer ningún bloque.\nCada uno tiene que empezar con algo tipo:\n"Escena 1 — Imagen 1 — 9 segundos"  o  "Clip — Imagen 1 — 8 segundos"'
       );
       return;
     }
@@ -116,17 +168,12 @@ export default function ClipsPage() {
     }
   }
 
-  // Agregar una escena vacía a mano.
   function addScene() {
     setScenes((prev) => {
       const nextSceneId = prev.reduce((max, s) => Math.max(max, s.id || 0), 0) + 1;
       return [
         ...prev,
-        {
-          ...withRuntime({ prompt: "", duration: 9 }, prev.length),
-          id: nextSceneId,
-          title: `Escena ${prev.length + 1}`,
-        },
+        { ...withRuntime({ prompt: "", duration: 9 }, prev.length), id: nextSceneId, title: `Escena ${prev.length + 1}` },
       ];
     });
   }
@@ -135,13 +182,21 @@ export default function ClipsPage() {
     setScenes((prev) => prev.filter((s) => s.id !== id));
   }
 
+  function resetAll() {
+    if (!confirm("¿Restablecer todo? Se borran las escenas, las imágenes y el guión.")) return;
+    setScenes([]);
+    setImages([]);
+    setBulkText("");
+    setSettings(DEFAULT_SETTINGS);
+  }
+
   async function runScene(scene) {
     const img = images[scene.imageIndex];
     if (!img || !img.url) {
       patchScene(scene.id, { status: "fail", error: "Esa imagen todavía no está subida." });
       return;
     }
-    patchScene(scene.id, { status: "processing", error: "", videoUrls: [], taskId: null });
+    patchScene(scene.id, { status: "processing", error: "", videoUrls: [], taskId: null, cost: null });
     try {
       const { taskId, videoUrls } = await generateAndWait(
         {
@@ -154,12 +209,21 @@ export default function ClipsPage() {
           nsfw_checker: settings.nsfw_checker,
         },
         apiKey,
-        {
-          onUpdate: (u) =>
-            patchScene(scene.id, { taskId: u.taskId, rawState: u.rawState || "" }),
-        }
+        { onUpdate: (u) => patchScene(scene.id, { taskId: u.taskId, rawState: u.rawState || "" }) }
       );
-      patchScene(scene.id, { status: "success", taskId, videoUrls });
+
+      // Costo por video = diferencia de balance antes/después.
+      let cost = null;
+      try {
+        const after = await getCredits(apiKey);
+        if (balanceRef.current != null && after != null) cost = Math.max(0, Math.round(balanceRef.current - after));
+        if (after != null) {
+          balanceRef.current = after;
+          setBalance(after);
+        }
+      } catch {}
+
+      patchScene(scene.id, { status: "success", taskId, videoUrls, cost });
     } catch (err) {
       patchScene(scene.id, { status: "fail", error: String(err.message || err) });
     }
@@ -172,7 +236,8 @@ export default function ClipsPage() {
 
   async function runAll() {
     if (!apiKey) return alert("Cargá tu API key primero.");
-    if (!readyImages.length) return alert("Subí al menos una imagen.");
+    if (!scenes.length) return alert("Agregá al menos una escena (pegá el guión o usá + Agregar escena).");
+    if (!images.some((i) => i.url)) return alert("Subí al menos una imagen.");
 
     const ready = scenes.filter(isSceneReady);
     const skipped = scenes.length - ready.length;
@@ -185,7 +250,6 @@ export default function ClipsPage() {
     }
 
     setRunning(true);
-    // Se lanzan en paralelo (cada una crea su tarea y hace polling).
     await Promise.allSettled(ready.map((s) => runScene(s)));
     setRunning(false);
   }
@@ -196,61 +260,94 @@ export default function ClipsPage() {
   return (
     <div className="clip-generator">
       <div className="app">
-        <header>
-          <Link href="/" className="back-link">
-            <ArrowLeft size={15} /> Volver al portal
-          </Link>
-          <h1>🎬 Generador de Clips</h1>
-          <p className="sub">
-            Subí 1–3 imágenes, revisá los guiones y generá los clips con Kie.ai (grok-imagine).
-          </p>
+        <header className="clip-header">
+          <div>
+            <Link href="/" className="back-link">
+              <ArrowLeft size={15} /> Volver al portal
+            </Link>
+            <h1>🎬 Generador de Clips</h1>
+          </div>
+          <div className="header-right">
+            <div className="balance" title="Créditos disponibles en tu cuenta de Kie.ai">
+              <span className="balance-label">Balance</span>
+              <span className="balance-value">
+                {balance != null ? `${balance.toLocaleString("es-AR")} créditos` : "—"}
+              </span>
+              <button
+                className="icon-btn"
+                onClick={refreshBalance}
+                disabled={!apiKey || balanceLoading}
+                title="Actualizar balance"
+              >
+                <RefreshCw size={14} className={balanceLoading ? "spin" : ""} />
+              </button>
+            </div>
+            <button className="btn" onClick={resetAll}>
+              <RotateCcw size={14} /> Restablecer todo
+            </button>
+          </div>
         </header>
 
-        <section className="card">
-          <label className="field">
+        {/* Ajustes globales (compactos, arriba de todo) */}
+        <section className="card settings-bar">
+          <label className="sfield grow">
             <span>API Key de kie.ai</span>
             <input
               type="password"
-              placeholder="Bearer token (se guarda solo en tu navegador)"
+              placeholder="Bearer token (se guarda en tu navegador)"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
           </label>
+          <label className="sfield">
+            <span>Modo</span>
+            <select value={settings.mode} onChange={(e) => setSettings((s) => ({ ...s, mode: e.target.value }))}>
+              {MODES.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </label>
+          <label className="sfield">
+            <span>Resolución</span>
+            <select value={settings.resolution} onChange={(e) => setSettings((s) => ({ ...s, resolution: e.target.value }))}>
+              {RESOLUTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </label>
+          <label className="sfield">
+            <span>Aspecto</span>
+            <select value={settings.aspect_ratio} onChange={(e) => setSettings((s) => ({ ...s, aspect_ratio: e.target.value }))}>
+              {ASPECTS.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={settings.nsfw_checker}
+              onChange={(e) => setSettings((s) => ({ ...s, nsfw_checker: e.target.checked }))}
+            />
+            <span>nsfw</span>
+          </label>
         </section>
 
+        {/* Guión */}
         <section className="card">
-          <h2>1 · Pegá tu guión completo (opcional)</h2>
-          <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            Pegá el guión y se separa <b>solo</b> en escenas. Cada bloque tiene que empezar con una
-            línea tipo <b>Escena N — Imagen N — X segundos</b> (con voz) o{" "}
-            <b>Clip — Imagen N — X segundos</b> (solo movimiento). También podés cargarlas a mano con
-            el botón <b>+ Agregar escena</b> de abajo.
-          </p>
+          <h2>Guión</h2>
           <textarea
             className="prompt"
-            rows={7}
-            placeholder={SAMPLE_SCRIPT}
+            rows={6}
+            placeholder="Pegá tu guión acá…"
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
             onPaste={handlePaste}
           />
-          <div className="row-between" style={{ marginTop: 10, marginBottom: 0 }}>
-            <div className="run-all">
-              <button className="btn" onClick={() => setBulkText(SAMPLE_SCRIPT)}>
-                Ejemplo con voz
-              </button>
-              <button className="btn" onClick={() => setBulkText(SAMPLE_CLIPS)}>
-                Ejemplo de clips
-              </button>
-            </div>
+          <div className="row-between" style={{ marginTop: 10, marginBottom: 0, justifyContent: "flex-end" }}>
             <button className="btn primary" onClick={importScript}>
-              ✂ Separar en bloques
+              ✂ Separar
             </button>
           </div>
         </section>
 
+        {/* Imágenes */}
         <section className="card">
-          <h2>2 · Imágenes de referencia ({images.length}/3)</h2>
+          <h2>Imágenes ({images.length}/3)</h2>
           <div className="images">
             {images.map((img, idx) => (
               <div className="thumb" key={img.id}>
@@ -286,49 +383,12 @@ export default function ClipsPage() {
           )}
         </section>
 
-        <section className="card">
-          <h2>3 · Ajustes globales</h2>
-          <div className="settings">
-            <Selector
-              label="Modo"
-              value={settings.mode}
-              options={MODES}
-              onChange={(mode) => setSettings((s) => ({ ...s, mode }))}
-            />
-            <Selector
-              label="Resolución"
-              value={settings.resolution}
-              options={RESOLUTIONS}
-              onChange={(resolution) => setSettings((s) => ({ ...s, resolution }))}
-            />
-            <Selector
-              label="Aspect ratio"
-              value={settings.aspect_ratio}
-              options={ASPECTS}
-              onChange={(aspect_ratio) => setSettings((s) => ({ ...s, aspect_ratio }))}
-            />
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={settings.nsfw_checker}
-                onChange={(e) => setSettings((s) => ({ ...s, nsfw_checker: e.target.checked }))}
-              />
-              <span>nsfw_checker</span>
-            </label>
-          </div>
-          <p className="hint">
-            Con imágenes externas el modo <b>spicy</b> no está disponible y el aspect ratio suele
-            ignorarse (el video toma las dimensiones de la imagen).
-          </p>
-        </section>
-
+        {/* Escenas / Clips */}
         <section className="card">
           <div className="row-between">
-            <h2>4 · Escenas / Clips ({scenes.length})</h2>
+            <h2>Escenas / Clips ({scenes.length})</h2>
             <div className="run-all">
-              {missingCount > 0 && (
-                <span className="warn-pill">⚠ {missingCount} sin imagen</span>
-              )}
+              {missingCount > 0 && <span className="warn-pill">⚠ {missingCount} sin imagen</span>}
               <button className="btn" onClick={addScene}>+ Agregar escena</button>
               <button className="btn primary" disabled={running || anyProcessing} onClick={runAll}>
                 {running || anyProcessing ? "Generando…" : "▶ Generar todos"}
@@ -354,32 +414,6 @@ export default function ClipsPage() {
             )}
           </div>
         </section>
-
-        <footer>
-          <p>
-            Los videos quedan alojados por Kie. Descargalos antes de que expiren. Costo aprox: 27
-            créditos por clip (según tu plan).
-          </p>
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-function Selector({ label, value, options, onChange }) {
-  return (
-    <div className="selector">
-      <span>{label}</span>
-      <div className="pills">
-        {options.map((o) => (
-          <button
-            key={o}
-            className={"pill " + (value === o ? "active" : "")}
-            onClick={() => onChange(o)}
-          >
-            {o}
-          </button>
-        ))}
       </div>
     </div>
   );
@@ -402,14 +436,10 @@ function SceneCard({ scene, images, onChange, onRun, onRemove }) {
       <div className="scene-head">
         <strong>{scene.title}</strong>
         <div className="scene-head-right">
+          {scene.cost != null && <span className="cost-pill">−{scene.cost} créditos</span>}
           <span className={"badge " + scene.status}>{STATE_LABEL[scene.status]}</span>
           {onRemove && (
-            <button
-              className="scene-del"
-              onClick={onRemove}
-              disabled={busy}
-              title="Borrar escena"
-            >
+            <button className="scene-del" onClick={onRemove} disabled={busy} title="Borrar escena">
               ✕
             </button>
           )}
@@ -442,7 +472,6 @@ function SceneCard({ scene, images, onChange, onRun, onRemove }) {
                 Imagen {idx + 1}
               </option>
             ))}
-            {/* si la escena apunta a una imagen que no existe todavía */}
             {!img && <option value={scene.imageIndex}>Imagen {scene.imageIndex + 1} (falta)</option>}
           </select>
         </label>
@@ -461,7 +490,9 @@ function SceneCard({ scene, images, onChange, onRun, onRemove }) {
         onChange={(e) => onChange({ prompt: e.target.value })}
       />
 
-      {scene.taskId && <div className="taskid">task: {scene.taskId} {scene.rawState && `(${scene.rawState})`}</div>}
+      {scene.taskId && (
+        <div className="taskid">task: {scene.taskId} {scene.rawState && `(${scene.rawState})`}</div>
+      )}
       {scene.error && <div className="scene-err">{scene.error}</div>}
 
       {scene.videoUrls?.length > 0 && (
