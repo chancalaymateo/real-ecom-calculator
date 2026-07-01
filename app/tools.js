@@ -16,7 +16,7 @@ export const TOOLS = [
     slug: "clips",
     href: "/clips",
     title: "Generador de Clips",
-    desc: "Convertí 1–3 imágenes en clips de video con IA (Grok Imagine / Kie.ai) desde tus guiones.",
+    desc: "Convertí hasta 7 imágenes en clips de video con IA (Grok Imagine / Kie.ai) desde tus guiones.",
     tag: "Grok · Kie.ai",
     icon: "Clapperboard",
     ready: true,

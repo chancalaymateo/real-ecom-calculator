@@ -9,7 +9,7 @@ Real Ecom Academy. Desde la home elegís qué herramienta usar.
 |------|-------------|-------------|
 | `/` | **Portal** | Home con las tarjetas de acceso a cada herramienta. |
 | `/calculadora` | **Calculadora de Rentabilidad** | Márgenes, CPA break-even y costos reales (MercadoPago / Tiendanube). |
-| `/clips` | **Generador de Clips** | Convierte 1–3 imágenes en clips de video con IA (Grok Imagine / Kie.ai). |
+| `/clips` | **Generador de Clips** | Convierte hasta 7 imágenes en clips de video con IA (Grok Imagine / Kie.ai). |
 
 Para agregar una herramienta nueva a la home, sumá una entrada en
 [`app/tools.js`](app/tools.js) — aparece sola en el portal.

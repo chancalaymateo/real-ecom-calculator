@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const STORAGE_KEY = "clips_state_v1";
+const MAX_IMAGES = 7;
 
 let uid = 0;
 const nextId = () => ++uid;
@@ -128,7 +129,7 @@ export default function ClipsPage() {
       alert("Primero cargá tu API key de kie.ai arriba.");
       return;
     }
-    const files = Array.from(fileList).slice(0, 3 - images.length);
+    const files = Array.from(fileList).slice(0, MAX_IMAGES - images.length);
     for (const file of files) {
       const id = nextId();
       const preview = URL.createObjectURL(file);
@@ -348,7 +349,7 @@ export default function ClipsPage() {
 
         {/* Imágenes */}
         <section className="card">
-          <h2>Imágenes ({images.length}/3)</h2>
+          <h2>Imágenes ({images.length}/{MAX_IMAGES})</h2>
           <div className="images">
             {images.map((img, idx) => (
               <div className="thumb" key={img.id}>
@@ -363,7 +364,7 @@ export default function ClipsPage() {
                 </div>
               </div>
             ))}
-            {images.length < 3 && (
+            {images.length < MAX_IMAGES && (
               <button className="thumb add" onClick={() => fileRef.current?.click()}>
                 + Agregar
               </button>
