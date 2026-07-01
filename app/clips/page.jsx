@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, RotateCcw, RefreshCw } from "lucide-react";
 import { parseScript } from "./scenes.js";
 import { uploadImage, generateAndWait, getCredits } from "./api.js";
+import "./clips.css";
 
 const MODES = ["fun", "normal", "spicy"];
 const RESOLUTIONS = ["480p", "720p"];
