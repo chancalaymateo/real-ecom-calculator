@@ -1,0 +1,146 @@
+/* Estilos del Generador de Clips.
+   Todo scopeado bajo .clip-generator para no chocar con el resto del portal. */
+.clip-generator {
+  --bg: #0b0f1a;
+  --card: #131a2b;
+  --card2: #0f1626;
+  --border: #23304d;
+  --text: #e6ecf7;
+  --muted: #8ea0c0;
+  --accent: #4f7cff;
+  --ok: #2ecc71;
+  --err: #ff5c6c;
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+.clip-generator * { box-sizing: border-box; }
+
+.clip-generator .app { max-width: 920px; margin: 0 auto; padding: 24px 18px 64px; }
+.clip-generator .back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--muted); font-size: 13px; font-weight: 600; margin-bottom: 14px;
+}
+.clip-generator .back-link:hover { color: var(--text); }
+.clip-generator header h1 { margin: 0 0 4px; font-size: 26px; color: var(--text); }
+.clip-generator .sub { color: var(--muted); margin: 0 0 20px; }
+.clip-generator h2 { font-size: 16px; margin: 0 0 14px; color: var(--text); }
+
+.clip-generator .card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.clip-generator .field { display: flex; flex-direction: column; gap: 6px; }
+.clip-generator .field span { font-size: 13px; color: var(--muted); }
+.clip-generator input,
+.clip-generator select,
+.clip-generator textarea {
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 11px;
+  font-size: 14px;
+  font-family: inherit;
+}
+.clip-generator input:focus,
+.clip-generator select:focus,
+.clip-generator textarea:focus { outline: 1px solid var(--accent); }
+
+/* imagenes */
+.clip-generator .images { display: flex; gap: 12px; flex-wrap: wrap; }
+.clip-generator .thumb {
+  position: relative; width: 120px; height: 150px;
+  border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--border); background: var(--card2);
+}
+.clip-generator .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.clip-generator .thumb.add {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); cursor: pointer; font-size: 14px;
+}
+.clip-generator .thumb.add:hover { color: var(--text); border-color: var(--accent); }
+.clip-generator .thumb-tag {
+  position: absolute; top: 6px; left: 6px;
+  background: rgba(0,0,0,.6); padding: 2px 7px; border-radius: 6px; font-size: 11px;
+}
+.clip-generator .thumb-x {
+  position: absolute; top: 6px; right: 6px;
+  background: rgba(0,0,0,.6); border: none; color: #fff; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 6px;
+}
+.clip-generator .thumb-state {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  font-size: 11px; text-align: center; padding: 3px; background: rgba(0,0,0,.6);
+}
+.clip-generator .thumb-state.ok { color: var(--ok); }
+.clip-generator .thumb-state.err { color: var(--err); }
+.clip-generator .thumb-state.load { color: var(--muted); }
+
+/* settings */
+.clip-generator .settings { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; }
+.clip-generator .selector span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.clip-generator .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.clip-generator .pill {
+  background: var(--card2); border: 1px solid var(--border); color: var(--muted);
+  padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 13px;
+}
+.clip-generator .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.clip-generator .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.clip-generator .toggle input { width: 16px; height: 16px; }
+
+.clip-generator .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+.clip-generator .hint.err { color: var(--err); }
+
+.clip-generator .row-between { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+
+/* botones */
+.clip-generator .btn {
+  background: var(--card2); border: 1px solid var(--border); color: var(--text);
+  padding: 9px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.clip-generator .btn:hover:not(:disabled) { border-color: var(--accent); }
+.clip-generator .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.clip-generator .btn:disabled { opacity: .55; cursor: not-allowed; }
+
+/* escenas */
+.clip-generator .scenes { display: flex; flex-direction: column; gap: 14px; }
+.clip-generator .scene {
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px;
+}
+.clip-generator .scene.processing { border-color: var(--accent); }
+.clip-generator .scene.success { border-color: var(--ok); }
+.clip-generator .scene.fail { border-color: var(--err); }
+.clip-generator .scene-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.clip-generator .badge { font-size: 12px; padding: 3px 9px; border-radius: 20px; background: #1c2740; color: var(--muted); }
+.clip-generator .badge.processing { color: var(--accent); }
+.clip-generator .badge.success { color: var(--ok); }
+.clip-generator .badge.fail { color: var(--err); }
+
+.clip-generator .scene-controls { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 10px; flex-wrap: wrap; }
+.clip-generator .scene-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.clip-generator .scene-controls input[type=number] { width: 90px; }
+
+.clip-generator .scene.missing-img { border-color: #7a3b2e; background: #1a1210; }
+.clip-generator .scene-warn { color: #ffb27a; font-size: 12.5px; margin-top: 8px; font-weight: 600; }
+.clip-generator .input-err { border-color: var(--err) !important; }
+
+.clip-generator .run-all { display: flex; align-items: center; gap: 10px; }
+.clip-generator .warn-pill {
+  font-size: 12px; color: #ffb27a; background: #2a1a12;
+  border: 1px solid #7a3b2e; padding: 4px 10px; border-radius: 20px;
+}
+
+.clip-generator .prompt { width: 100%; resize: vertical; line-height: 1.45; }
+.clip-generator .taskid { font-size: 11px; color: var(--muted); margin-top: 8px; font-family: monospace; }
+.clip-generator .scene-err { color: var(--err); font-size: 13px; margin-top: 8px; }
+
+.clip-generator .results { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+.clip-generator .result { display: flex; flex-direction: column; gap: 6px; }
+.clip-generator .result video { width: 220px; border-radius: 8px; background: #000; }
+.clip-generator .result a { color: var(--accent); font-size: 13px; text-decoration: none; }
+
+.clip-generator footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }

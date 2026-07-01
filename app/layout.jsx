@@ -2,8 +2,11 @@ import "./globals.css";
 import { Toaster } from "sonner";
 
 export const metadata = {
-  title: "Real Ecom Calculator",
-  description: "Calculadora de rentabilidad para MercadoPago",
+  title: {
+    default: "Real Ecom Academy — Herramientas",
+    template: "%s · Real Ecom Academy",
+  },
+  description: "Portal de herramientas y automatizaciones de Real Ecom Academy.",
   icons: { icon: "/logos/ico.png" },
 };
 
