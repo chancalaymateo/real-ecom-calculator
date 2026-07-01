@@ -115,6 +115,14 @@
 .clip-generator .scene.success { border-color: var(--ok); }
 .clip-generator .scene.fail { border-color: var(--err); }
 .clip-generator .scene-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.clip-generator .scene-head-right { display: flex; align-items: center; gap: 8px; }
+.clip-generator .scene-del {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.clip-generator .scene-del:hover:not(:disabled) { border-color: var(--err); color: var(--err); }
+.clip-generator .scene-del:disabled { opacity: .4; cursor: not-allowed; }
 .clip-generator .badge { font-size: 12px; padding: 3px 9px; border-radius: 20px; background: #1c2740; color: var(--muted); }
 .clip-generator .badge.processing { color: var(--accent); }
 .clip-generator .badge.success { color: var(--ok); }

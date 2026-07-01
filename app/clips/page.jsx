@@ -105,6 +105,36 @@ export default function ClipsPage() {
     setScenes(parsed.map(withRuntime));
   }
 
+  // Al pegar un guión, si tiene encabezados reconocibles lo separa solo.
+  function handlePaste(e) {
+    const pasted = e.clipboardData?.getData("text") || "";
+    const parsed = parseScript(pasted);
+    if (parsed.length) {
+      e.preventDefault();
+      setBulkText(pasted);
+      setScenes(parsed.map(withRuntime));
+    }
+  }
+
+  // Agregar una escena vacía a mano.
+  function addScene() {
+    setScenes((prev) => {
+      const nextSceneId = prev.reduce((max, s) => Math.max(max, s.id || 0), 0) + 1;
+      return [
+        ...prev,
+        {
+          ...withRuntime({ prompt: "", duration: 9 }, prev.length),
+          id: nextSceneId,
+          title: `Escena ${prev.length + 1}`,
+        },
+      ];
+    });
+  }
+
+  function removeScene(id) {
+    setScenes((prev) => prev.filter((s) => s.id !== id));
+  }
+
   async function runScene(scene) {
     const img = images[scene.imageIndex];
     if (!img || !img.url) {
@@ -191,10 +221,10 @@ export default function ClipsPage() {
         <section className="card">
           <h2>1 · Pegá tu guión completo (opcional)</h2>
           <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            Pegá todo el texto tal cual. Cada bloque tiene que empezar con una línea tipo{" "}
-            <b>Escena N — Imagen N — X segundos</b> (con voz) o <b>Clip — Imagen N — X segundos</b>{" "}
-            (solo movimiento). La app lo separa solo, elige la imagen y los segundos, y después
-            corregís lo que quieras.
+            Pegá el guión y se separa <b>solo</b> en escenas. Cada bloque tiene que empezar con una
+            línea tipo <b>Escena N — Imagen N — X segundos</b> (con voz) o{" "}
+            <b>Clip — Imagen N — X segundos</b> (solo movimiento). También podés cargarlas a mano con
+            el botón <b>+ Agregar escena</b> de abajo.
           </p>
           <textarea
             className="prompt"
@@ -202,6 +232,7 @@ export default function ClipsPage() {
             placeholder={SAMPLE_SCRIPT}
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
+            onPaste={handlePaste}
           />
           <div className="row-between" style={{ marginTop: 10, marginBottom: 0 }}>
             <div className="run-all">
@@ -298,6 +329,7 @@ export default function ClipsPage() {
               {missingCount > 0 && (
                 <span className="warn-pill">⚠ {missingCount} sin imagen</span>
               )}
+              <button className="btn" onClick={addScene}>+ Agregar escena</button>
               <button className="btn primary" disabled={running || anyProcessing} onClick={runAll}>
                 {running || anyProcessing ? "Generando…" : "▶ Generar todos"}
               </button>
@@ -312,8 +344,14 @@ export default function ClipsPage() {
                 images={images}
                 onChange={(patch) => patchScene(scene.id, patch)}
                 onRun={() => runScene(scene)}
+                onRemove={() => removeScene(scene.id)}
               />
             ))}
+            {scenes.length === 0 && (
+              <button className="btn" onClick={addScene} style={{ alignSelf: "flex-start" }}>
+                + Agregar la primera escena
+              </button>
+            )}
           </div>
         </section>
 
@@ -347,7 +385,7 @@ function Selector({ label, value, options, onChange }) {
   );
 }
 
-function SceneCard({ scene, images, onChange, onRun }) {
+function SceneCard({ scene, images, onChange, onRun, onRemove }) {
   const busy = scene.status === "processing";
   const img = images[scene.imageIndex];
   const imgReady = Boolean(img && img.url);
@@ -363,7 +401,19 @@ function SceneCard({ scene, images, onChange, onRun }) {
     <div className={"scene " + scene.status + (imgReady ? "" : " missing-img")}>
       <div className="scene-head">
         <strong>{scene.title}</strong>
-        <span className={"badge " + scene.status}>{STATE_LABEL[scene.status]}</span>
+        <div className="scene-head-right">
+          <span className={"badge " + scene.status}>{STATE_LABEL[scene.status]}</span>
+          {onRemove && (
+            <button
+              className="scene-del"
+              onClick={onRemove}
+              disabled={busy}
+              title="Borrar escena"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="scene-controls">
