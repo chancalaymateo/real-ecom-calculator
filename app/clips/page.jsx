@@ -1,7 +1,8 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, RotateCcw, RefreshCw } from "lucide-react";
+import JSZip from "jszip";
+import { ArrowLeft, Download, RotateCcw, RefreshCw } from "lucide-react";
 import { parseScript } from "./scenes.js";
 import { uploadImage, generateAndWait, getCredits } from "./api.js";
 import "./clips.css";
@@ -26,6 +27,62 @@ const DEFAULT_SETTINGS = {
 
 const STORAGE_KEY = "clips_state_v1";
 const MAX_IMAGES = 7;
+
+function slugifyFilename(value) {
+  return String(value || "escena")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.\s]+$/g, "") || "escena";
+}
+
+function padNumber(value, size) {
+  return String(value).padStart(size, "0");
+}
+
+function extFromMime(mimeType) {
+  const clean = String(mimeType || "").toLowerCase();
+  if (clean.includes("webm")) return ".webm";
+  if (clean.includes("quicktime")) return ".mov";
+  if (clean.includes("ogg")) return ".ogv";
+  if (clean.includes("mpeg")) return ".mpg";
+  return ".mp4";
+}
+
+async function buildScenesZip(scenes) {
+  const zip = new JSZip();
+  const orderedScenes = scenes.flatMap((scene, sceneIndex) =>
+    (scene.videoUrls || []).map((url, videoIndex) => ({ scene, sceneIndex, videoIndex, url }))
+  );
+  const width = Math.max(2, String(Math.max(1, orderedScenes.length)).length);
+
+  for (const item of orderedScenes) {
+    const response = await fetch(item.url);
+    if (!response.ok) {
+      throw new Error(`No pude descargar ${item.scene.title}`);
+    }
+    const blob = await response.blob();
+    const ext = extFromMime(response.headers.get("content-type"));
+    const sceneName = slugifyFilename(item.scene.title);
+    const seq = padNumber(item.sceneIndex + 1, width);
+    const clipSuffix = item.scene.videoUrls.length > 1 ? ` - ${padNumber(item.videoIndex + 1, 2)}` : "";
+    const fileName = `${seq} - ${sceneName}${clipSuffix}${ext}`;
+    zip.file(fileName, blob);
+  }
+
+  return zip.generateAsync({ type: "blob" });
+}
+
+function triggerDownload(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
 
 let uid = 0;
 const nextId = () => ++uid;
@@ -56,6 +113,7 @@ export default function ClipsPage() {
   const [running, setRunning] = useState(false);
   const [balance, setBalance] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
+  const [downloadingAll, setDownloadingAll] = useState(false);
   const fileRef = useRef(null);
   const balanceRef = useRef(null); // último balance conocido, para calcular costo
   const loaded = useRef(false);
@@ -256,6 +314,21 @@ export default function ClipsPage() {
     setRunning(false);
   }
 
+  async function downloadAll() {
+    const readyScenes = scenes.filter((scene) => scene.videoUrls?.length > 0);
+    if (!readyScenes.length) return alert("Todavía no hay clips para descargar.");
+
+    setDownloadingAll(true);
+    try {
+      const blob = await buildScenesZip(readyScenes);
+      triggerDownload(blob, "clips-por-escena.zip");
+    } catch (err) {
+      alert(String(err.message || err));
+    } finally {
+      setDownloadingAll(false);
+    }
+  }
+
   const anyProcessing = scenes.some((s) => s.status === "processing");
   const missingCount = scenes.filter((s) => !isSceneReady(s)).length;
 
@@ -391,6 +464,13 @@ export default function ClipsPage() {
             <h2>Escenas / Clips ({scenes.length})</h2>
             <div className="run-all">
               {missingCount > 0 && <span className="warn-pill">⚠ {missingCount} sin imagen</span>}
+              <button
+                className="btn"
+                onClick={downloadAll}
+                disabled={downloadingAll || !scenes.some((s) => s.videoUrls?.length > 0)}
+              >
+                <Download size={14} /> {downloadingAll ? "Preparando…" : "Descargar todo"}
+              </button>
               <button className="btn" onClick={addScene}>+ Agregar escena</button>
               <button className="btn primary" disabled={running || anyProcessing} onClick={runAll}>
                 {running || anyProcessing ? "Generando…" : "▶ Generar todos"}
