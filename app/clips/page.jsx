@@ -87,6 +87,15 @@ function triggerDownload(blob, fileName) {
 let uid = 0;
 const nextId = () => ++uid;
 
+// Recalcula a qué posición se movió un índice cuando la imagen `from`
+// se reubica en `to` (mismo criterio que Array.splice).
+function remapImageIndex(idx, from, to) {
+  if (idx === from) return to;
+  if (from < to && idx > from && idx <= to) return idx - 1;
+  if (from > to && idx >= to && idx < from) return idx + 1;
+  return idx;
+}
+
 // Agrega los campos de estado que necesita cada escena en runtime.
 function withRuntime(s, idx) {
   return {
@@ -114,6 +123,9 @@ export default function ClipsPage() {
   const [balance, setBalance] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
+  const [editImages, setEditImages] = useState(false);
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
   const fileRef = useRef(null);
   const balanceRef = useRef(null); // último balance conocido, para calcular costo
   const loaded = useRef(false);
@@ -204,6 +216,28 @@ export default function ClipsPage() {
 
   function removeImage(id) {
     setImages((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  // Reordena la imagen de la posición `from` a `to` y remapea el imageIndex
+  // de cada escena para que siga apuntando a la misma imagen.
+  function moveImage(from, to) {
+    if (from == null || to == null || from === to) return;
+    setImages((prev) => {
+      if (from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setScenes((prev) =>
+      prev.map((s) => ({ ...s, imageIndex: remapImageIndex(s.imageIndex, from, to) }))
+    );
+  }
+
+  function handleDrop(targetIndex) {
+    moveImage(dragIndex, targetIndex);
+    setDragIndex(null);
+    setDragOverIndex(null);
   }
 
   function importScript() {
@@ -422,22 +456,66 @@ export default function ClipsPage() {
 
         {/* Imágenes */}
         <section className="card">
-          <h2>Imágenes ({images.length}/{MAX_IMAGES})</h2>
+          <div className="row-between">
+            <h2>Imágenes ({images.length}/{MAX_IMAGES})</h2>
+            {images.length > 1 && (
+              <button
+                className={"btn" + (editImages ? " primary" : "")}
+                onClick={() => {
+                  setEditImages((v) => !v);
+                  setDragIndex(null);
+                  setDragOverIndex(null);
+                }}
+              >
+                {editImages ? "✓ Listo" : "✎ Editar orden"}
+              </button>
+            )}
+          </div>
+          {editImages && (
+            <p className="hint">Arrastrá las imágenes para cambiar su orden. Las escenas siguen apuntando a la misma imagen.</p>
+          )}
           <div className="images">
             {images.map((img, idx) => (
-              <div className="thumb" key={img.id}>
+              <div
+                className={
+                  "thumb" +
+                  (editImages ? " draggable" : "") +
+                  (dragIndex === idx ? " dragging" : "") +
+                  (dragOverIndex === idx && dragIndex !== idx ? " drag-over" : "")
+                }
+                key={img.id}
+                draggable={editImages}
+                onDragStart={() => editImages && setDragIndex(idx)}
+                onDragOver={(e) => {
+                  if (!editImages || dragIndex == null) return;
+                  e.preventDefault();
+                  setDragOverIndex(idx);
+                }}
+                onDrop={(e) => {
+                  if (!editImages) return;
+                  e.preventDefault();
+                  handleDrop(idx);
+                }}
+                onDragEnd={() => {
+                  setDragIndex(null);
+                  setDragOverIndex(null);
+                }}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img.preview} alt={img.name} />
+                <img src={img.preview} alt={img.name} draggable={false} />
                 <div className="thumb-tag">Imagen {idx + 1}</div>
-                <button className="thumb-x" onClick={() => removeImage(img.id)} title="Quitar">
-                  ✕
-                </button>
+                {!editImages && (
+                  <button className="thumb-x" onClick={() => removeImage(img.id)} title="Quitar">
+                    ✕
+                  </button>
+                )}
+                {editImages && <div className="thumb-grip" title="Arrastrar para reordenar">⠿</div>}
                 <div className={"thumb-state " + (img.error ? "err" : img.url ? "ok" : "load")}>
                   {img.uploading ? "Subiendo…" : img.error ? "Error" : "Subida ✓"}
                 </div>
               </div>
             ))}
-            {images.length < MAX_IMAGES && (
+            {!editImages && images.length < MAX_IMAGES && (
               <button className="thumb add" onClick={() => fileRef.current?.click()}>
                 + Agregar
               </button>
