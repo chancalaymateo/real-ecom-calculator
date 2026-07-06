@@ -126,6 +126,7 @@ export default function ClipsPage() {
   const [editImages, setEditImages] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [fileDropActive, setFileDropActive] = useState(false);
   const fileRef = useRef(null);
   const balanceRef = useRef(null); // último balance conocido, para calcular costo
   const loaded = useRef(false);
@@ -216,6 +217,33 @@ export default function ClipsPage() {
 
   function removeImage(id) {
     setImages((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  // ¿El arrastre trae archivos del sistema (no una miniatura para reordenar)?
+  function isFileDrag(e) {
+    const types = e.dataTransfer?.types;
+    return types ? Array.from(types).includes("Files") : false;
+  }
+
+  function handleFileDragOver(e) {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setFileDropActive(true);
+  }
+
+  function handleFileDragLeave(e) {
+    // Solo apagamos el resaltado si el cursor salió de la sección entera.
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setFileDropActive(false);
+  }
+
+  function handleFileDrop(e) {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    setFileDropActive(false);
+    const dropped = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+    if (dropped.length) handleFiles(dropped);
   }
 
   // Reordena la imagen de la posición `from` a `to` y remapea el imageIndex
@@ -455,7 +483,12 @@ export default function ClipsPage() {
         </section>
 
         {/* Imágenes */}
-        <section className="card">
+        <section
+          className={"card" + (fileDropActive ? " file-drop-active" : "")}
+          onDragOver={handleFileDragOver}
+          onDragLeave={handleFileDragLeave}
+          onDrop={handleFileDrop}
+        >
           <div className="row-between">
             <h2>Imágenes ({images.length}/{MAX_IMAGES})</h2>
             {images.length > 1 && (
@@ -471,9 +504,11 @@ export default function ClipsPage() {
               </button>
             )}
           </div>
-          {editImages && (
+          {editImages ? (
             <p className="hint">Arrastrá las imágenes para cambiar su orden. Las escenas siguen apuntando a la misma imagen.</p>
-          )}
+          ) : images.length < MAX_IMAGES ? (
+            <p className="hint">Arrastrá imágenes desde tu PC hasta acá, o usá <strong>+ Agregar</strong>.</p>
+          ) : null}
           <div className="images">
             {images.map((img, idx) => (
               <div
