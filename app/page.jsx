@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { Calculator, Clapperboard, ArrowRight, Sparkles } from "lucide-react";
+import { Calculator, Clapperboard, Video, ArrowRight, Sparkles } from "lucide-react";
 import { TOOLS } from "./tools";
 import styles from "./portal.module.css";
 
 // Mapa de iconos disponibles para las tarjetas.
-const ICONS = { Calculator, Clapperboard };
+const ICONS = { Calculator, Clapperboard, Video };
 
 export const metadata = {
   title: "Real Ecom Academy — Herramientas",

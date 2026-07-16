@@ -21,4 +21,13 @@ export const TOOLS = [
     icon: "Clapperboard",
     ready: true,
   },
+  {
+    slug: "gemini-video",
+    href: "/gemini-video",
+    title: "Gemini Omni Video",
+    desc: "Generá videos con Gemini Omni: prompt + imágenes, video de origen, audio y character IDs.",
+    tag: "Gemini · Kie.ai",
+    icon: "Video",
+    ready: true,
+  },
 ];
