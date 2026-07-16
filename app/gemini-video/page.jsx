@@ -1,51 +1,128 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, RotateCcw, RefreshCw, Plus, X, Film } from "lucide-react";
+import JSZip from "jszip";
+import { ArrowLeft, Download, RotateCcw, RefreshCw } from "lucide-react";
+import { parseScript } from "../clips/scenes.js";
 import { uploadFile, generateAndWait, getCredits } from "./api.js";
 import "./gemini.css";
 
-const DURATIONS = ["4", "6", "8", "10"];
+const GEMINI_DURATIONS = [4, 6, 8, 10];
 const ASPECTS = ["16:9", "9:16"];
 const RESOLUTIONS = ["720p", "1080p", "4k"];
 const MAX_IMAGES = 7;
-const MAX_AUDIO = 3;
-const MAX_CHARS = 3;
+
+const STATE_LABEL = {
+  idle: "Sin generar",
+  processing: "Generando…",
+  success: "Listo ✅",
+  fail: "Error ❌",
+};
 
 const DEFAULT_SETTINGS = {
-  duration: "8",
-  aspect_ratio: "16:9",
+  aspect_ratio: "9:16",
   resolution: "720p",
   seed: "",
 };
 
 const STORAGE_KEY = "gemini_video_state_v1";
 
+// Gemini solo acepta 4, 6, 8 o 10s. Ajustamos al permitido más cercano.
+// En empate (ej. 9s) redondeamos hacia arriba para no cortar el diálogo.
+function snapDuration(value) {
+  const n = Number(value) || 8;
+  return GEMINI_DURATIONS.reduce((best, val) => {
+    const d = Math.abs(val - n);
+    const bd = Math.abs(best - n);
+    return d < bd || (d === bd && val > best) ? val : best;
+  }, GEMINI_DURATIONS[0]);
+}
+
+function slugifyFilename(value) {
+  return String(value || "escena")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.\s]+$/g, "") || "escena";
+}
+
+function padNumber(value, size) {
+  return String(value).padStart(size, "0");
+}
+
+function extFromMime(mimeType) {
+  const clean = String(mimeType || "").toLowerCase();
+  if (clean.includes("webm")) return ".webm";
+  if (clean.includes("quicktime")) return ".mov";
+  if (clean.includes("ogg")) return ".ogv";
+  if (clean.includes("mpeg")) return ".mpg";
+  return ".mp4";
+}
+
+async function buildScenesZip(scenes) {
+  const zip = new JSZip();
+  const orderedScenes = scenes.flatMap((scene, sceneIndex) =>
+    (scene.videoUrls || []).map((url, videoIndex) => ({ scene, sceneIndex, videoIndex, url }))
+  );
+  const width = Math.max(2, String(Math.max(1, orderedScenes.length)).length);
+
+  for (const item of orderedScenes) {
+    const response = await fetch(item.url);
+    if (!response.ok) throw new Error(`No pude descargar ${item.scene.title}`);
+    const blob = await response.blob();
+    const ext = extFromMime(response.headers.get("content-type"));
+    const sceneName = slugifyFilename(item.scene.title);
+    const seq = padNumber(item.sceneIndex + 1, width);
+    const clipSuffix = item.scene.videoUrls.length > 1 ? ` - ${padNumber(item.videoIndex + 1, 2)}` : "";
+    zip.file(`${seq} - ${sceneName}${clipSuffix}${ext}`, blob);
+  }
+  return zip.generateAsync({ type: "blob" });
+}
+
+function triggerDownload(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 let uid = 0;
 const nextId = () => ++uid;
 
+// Agrega los campos de estado que necesita cada escena en runtime.
+function withRuntime(s, idx) {
+  return {
+    imageIndex: 0,
+    duration: 8,
+    ...s,
+    id: s.id ?? idx + 1,
+    title: s.title ?? `Escena ${idx + 1}`,
+    duration: snapDuration(s.duration),
+    status: "idle",
+    taskId: null,
+    rawState: "",
+    videoUrls: [],
+    cost: null,
+    error: "",
+  };
+}
+
 export default function GeminiVideoPage() {
   const [apiKey, setApiKey] = useState("");
-  const [prompt, setPrompt] = useState("");
   const [images, setImages] = useState([]); // {id, name, preview, url, uploading, error}
-  const [video, setVideo] = useState(null); // {name, url, uploading, error, start, ends}
-  const [audioIds, setAudioIds] = useState([]);
-  const [characterIds, setCharacterIds] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-
-  const [status, setStatus] = useState("idle"); // idle | processing | success | fail
-  const [taskId, setTaskId] = useState(null);
-  const [rawState, setRawState] = useState("");
-  const [videoUrls, setVideoUrls] = useState([]);
-  const [error, setError] = useState("");
-  const [cost, setCost] = useState(null);
-
+  const [scenes, setScenes] = useState([]);
+  const [bulkText, setBulkText] = useState("");
+  const [running, setRunning] = useState(false);
   const [balance, setBalance] = useState(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
+  const [downloadingAll, setDownloadingAll] = useState(false);
   const [fileDropActive, setFileDropActive] = useState(false);
-
-  const imgRef = useRef(null);
-  const videoRef = useRef(null);
+  const fileRef = useRef(null);
   const balanceRef = useRef(null);
   const loaded = useRef(false);
 
@@ -57,13 +134,11 @@ export default function GeminiVideoPage() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const s = JSON.parse(raw);
-        if (typeof s.prompt === "string") setPrompt(s.prompt);
         if (s.settings) setSettings({ ...DEFAULT_SETTINGS, ...s.settings });
-        if (Array.isArray(s.images))
+        if (Array.isArray(s.scenes)) setScenes(s.scenes);
+        if (Array.isArray(s.images)) {
           setImages(s.images.map((i) => ({ ...i, preview: i.url, uploading: false, error: "" })));
-        if (s.video) setVideo({ ...s.video, preview: s.video.url, uploading: false, error: "" });
-        if (Array.isArray(s.audioIds)) setAudioIds(s.audioIds);
-        if (Array.isArray(s.characterIds)) setCharacterIds(s.characterIds);
+        }
       }
     } catch {}
     loaded.current = true;
@@ -73,15 +148,9 @@ export default function GeminiVideoPage() {
     if (!loaded.current) return;
     try {
       const imagesToSave = images.filter((i) => i.url).map((i) => ({ id: i.id, name: i.name, url: i.url }));
-      const videoToSave = video?.url
-        ? { name: video.name, url: video.url, start: video.start, ends: video.ends }
-        : null;
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ prompt, settings, images: imagesToSave, video: videoToSave, audioIds, characterIds })
-      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ settings, scenes, images: imagesToSave }));
     } catch {}
-  }, [prompt, settings, images, video, audioIds, characterIds]);
+  }, [settings, scenes, images]);
 
   useEffect(() => localStorage.setItem("kie_api_key", apiKey), [apiKey]);
 
@@ -111,21 +180,18 @@ export default function GeminiVideoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey]);
 
-  // ── Cuota: imágenes(1) + video(2) + characterIds(1) ≤ 7 ──
-  const usedSlots = images.length + (video?.url ? 2 : 0) + characterIds.filter((c) => c.trim()).length;
-  const slotsLeft = 7 - usedSlots;
-
+  function patchScene(id, patch) {
+    setScenes((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
   function patchImage(id, patch) {
     setImages((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
 
-  async function handleImageFiles(fileList) {
+  async function handleFiles(fileList) {
     if (!apiKey) return alert("Primero cargá tu API key de kie.ai arriba.");
-    const room = Math.min(MAX_IMAGES - images.length, slotsLeft);
-    if (room <= 0) return alert("No te quedan slots para más imágenes (cuota máxima 7).");
     const files = Array.from(fileList)
       .filter((f) => f.type.startsWith("image/"))
-      .slice(0, room);
+      .slice(0, MAX_IMAGES - images.length);
     for (const file of files) {
       const id = nextId();
       const preview = URL.createObjectURL(file);
@@ -137,148 +203,156 @@ export default function GeminiVideoPage() {
         patchImage(id, { uploading: false, error: String(err.message || err) });
       }
     }
-    if (imgRef.current) imgRef.current.value = "";
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   function removeImage(id) {
     setImages((prev) => prev.filter((i) => i.id !== id));
   }
 
-  async function handleVideoFile(fileList) {
-    if (!apiKey) return alert("Primero cargá tu API key de kie.ai arriba.");
-    const file = Array.from(fileList).find((f) => f.type.startsWith("video/"));
-    if (!file) return;
-    if (video?.url && slotsLeft < 0) {
-      // el video ya ocupa slots; reemplazar está ok
-    }
-    if (!video && slotsLeft < 2) return alert("No te quedan 2 slots libres para un video (cuota máxima 7).");
-    const preview = URL.createObjectURL(file);
-    setVideo({ name: file.name, preview, url: "", uploading: true, error: "", start: 0, ends: 10 });
-    try {
-      const { url } = await uploadFile(file, apiKey);
-      setVideo((v) => ({ ...v, url, uploading: false }));
-    } catch (err) {
-      setVideo((v) => ({ ...v, uploading: false, error: String(err.message || err) }));
-    }
-    if (videoRef.current) videoRef.current.value = "";
-  }
-
-  function removeVideo() {
-    setVideo(null);
-  }
-
-  // ── Drag & drop de archivos ──
   function isFileDrag(e) {
     const types = e.dataTransfer?.types;
     return types ? Array.from(types).includes("Files") : false;
   }
-  function handleDragOver(e) {
+  function handleFileDragOver(e) {
     if (!isFileDrag(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     setFileDropActive(true);
   }
-  function handleDragLeave(e) {
+  function handleFileDragLeave(e) {
     if (e.currentTarget.contains(e.relatedTarget)) return;
     setFileDropActive(false);
   }
-  function handleDrop(e) {
+  function handleFileDrop(e) {
     if (!isFileDrag(e)) return;
     e.preventDefault();
     setFileDropActive(false);
-    const files = Array.from(e.dataTransfer.files);
-    const imgs = files.filter((f) => f.type.startsWith("image/"));
-    const vids = files.filter((f) => f.type.startsWith("video/"));
-    if (imgs.length) handleImageFiles(imgs);
-    if (vids.length) handleVideoFile(vids);
+    const dropped = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+    if (dropped.length) handleFiles(dropped);
   }
 
-  // ── Listas de IDs (audio / character) ──
-  function addId(setter, list, max) {
-    if (list.length >= max) return;
-    setter((prev) => [...prev, ""]);
+  function importScript() {
+    const parsed = parseScript(bulkText);
+    if (!parsed.length) {
+      alert(
+        'No pude reconocer ningún bloque.\nCada uno tiene que empezar con algo tipo:\n"Escena 1 — Imagen 1 — 9 segundos"'
+      );
+      return;
+    }
+    setScenes(parsed.map(withRuntime));
   }
-  function patchId(setter, idx, value) {
-    setter((prev) => prev.map((v, i) => (i === idx ? value : v)));
+
+  function handlePaste(e) {
+    const pasted = e.clipboardData?.getData("text") || "";
+    const parsed = parseScript(pasted);
+    if (parsed.length) {
+      e.preventDefault();
+      setBulkText(pasted);
+      setScenes(parsed.map(withRuntime));
+    }
   }
-  function removeId(setter, idx) {
-    setter((prev) => prev.filter((_, i) => i !== idx));
+
+  function addScene() {
+    setScenes((prev) => {
+      const nextSceneId = prev.reduce((max, s) => Math.max(max, s.id || 0), 0) + 1;
+      return [
+        ...prev,
+        { ...withRuntime({ prompt: "", duration: 8 }, prev.length), id: nextSceneId, title: `Escena ${prev.length + 1}` },
+      ];
+    });
+  }
+
+  function removeScene(id) {
+    setScenes((prev) => prev.filter((s) => s.id !== id));
   }
 
   function resetAll() {
-    if (!confirm("¿Restablecer todo? Se borran el prompt, imágenes, video e IDs.")) return;
-    setPrompt("");
+    if (!confirm("¿Restablecer todo? Se borran las escenas, las imágenes y el guión.")) return;
+    setScenes([]);
     setImages([]);
-    setVideo(null);
-    setAudioIds([]);
-    setCharacterIds([]);
+    setBulkText("");
     setSettings(DEFAULT_SETTINGS);
-    setStatus("idle");
-    setTaskId(null);
-    setRawState("");
-    setVideoUrls([]);
-    setError("");
-    setCost(null);
   }
 
-  const anyUploading = images.some((i) => i.uploading) || video?.uploading;
-  const busy = status === "processing";
-
-  async function generate() {
-    if (!apiKey) return alert("Cargá tu API key primero.");
-    if (!prompt.trim()) return alert("Escribí un prompt.");
-    if (anyUploading) return alert("Esperá a que terminen de subir los archivos.");
-    if (video && !video.url) return alert("El video todavía no terminó de subir.");
-    if (usedSlots > 7) return alert("Superás la cuota de 7 slots. Sacá imágenes, video o character IDs.");
-
-    setStatus("processing");
-    setError("");
-    setVideoUrls([]);
-    setTaskId(null);
-    setRawState("");
-    setCost(null);
-
-    const videoList = video?.url
-      ? [{ url: video.url, start: Number(video.start) || 0, ends: Number(video.ends) || 10 }]
-      : [];
-
+  async function runScene(scene) {
+    const img = images[scene.imageIndex];
+    if (!img || !img.url) {
+      patchScene(scene.id, { status: "fail", error: "Esa imagen todavía no está subida." });
+      return;
+    }
+    patchScene(scene.id, { status: "processing", error: "", videoUrls: [], taskId: null, cost: null });
     try {
-      const { taskId: tId, videoUrls: urls } = await generateAndWait(
+      const { taskId, videoUrls } = await generateAndWait(
         {
-          prompt: prompt.trim(),
-          imageUrls: images.filter((i) => i.url).map((i) => i.url),
-          audioIds: audioIds.map((s) => s.trim()).filter(Boolean),
-          characterIds: characterIds.map((s) => s.trim()).filter(Boolean),
-          videoList,
-          duration: settings.duration,
+          prompt: scene.prompt,
+          imageUrls: [img.url],
+          duration: String(scene.duration),
           aspect_ratio: settings.aspect_ratio,
           resolution: settings.resolution,
           seed: settings.seed,
         },
         apiKey,
-        { onUpdate: (u) => { setTaskId(u.taskId); setRawState(u.rawState || ""); } }
+        { onUpdate: (u) => patchScene(scene.id, { taskId: u.taskId, rawState: u.rawState || "" }) }
       );
 
-      // Costo = diferencia de balance antes/después
-      let c = null;
+      let cost = null;
       try {
         const after = await getCredits(apiKey);
-        if (balanceRef.current != null && after != null) c = Math.max(0, Math.round(balanceRef.current - after));
+        if (balanceRef.current != null && after != null) cost = Math.max(0, Math.round(balanceRef.current - after));
         if (after != null) {
           balanceRef.current = after;
           setBalance(after);
         }
       } catch {}
 
-      setStatus("success");
-      setTaskId(tId);
-      setVideoUrls(urls || []);
-      setCost(c);
+      patchScene(scene.id, { status: "success", taskId, videoUrls, cost });
     } catch (err) {
-      setStatus("fail");
-      setError(String(err.message || err));
+      patchScene(scene.id, { status: "fail", error: String(err.message || err) });
     }
   }
+
+  function isSceneReady(s) {
+    const img = images[s.imageIndex];
+    return Boolean(img && img.url);
+  }
+
+  async function runAll() {
+    if (!apiKey) return alert("Cargá tu API key primero.");
+    if (!scenes.length) return alert("Agregá al menos una escena (pegá el guión o usá + Agregar escena).");
+    if (!images.some((i) => i.url)) return alert("Subí al menos una imagen.");
+
+    const ready = scenes.filter(isSceneReady);
+    const skipped = scenes.length - ready.length;
+    if (!ready.length) return alert("Ninguna escena tiene su imagen subida todavía.");
+    if (skipped > 0) {
+      const ok = confirm(
+        `${skipped} escena(s) apuntan a una imagen que no está subida y se van a saltear.\n¿Generar las ${ready.length} restantes?`
+      );
+      if (!ok) return;
+    }
+
+    setRunning(true);
+    await Promise.allSettled(ready.map((s) => runScene(s)));
+    setRunning(false);
+  }
+
+  async function downloadAll() {
+    const readyScenes = scenes.filter((scene) => scene.videoUrls?.length > 0);
+    if (!readyScenes.length) return alert("Todavía no hay videos para descargar.");
+    setDownloadingAll(true);
+    try {
+      const blob = await buildScenesZip(readyScenes);
+      triggerDownload(blob, "gemini-videos-por-escena.zip");
+    } catch (err) {
+      alert(String(err.message || err));
+    } finally {
+      setDownloadingAll(false);
+    }
+  }
+
+  const anyProcessing = scenes.some((s) => s.status === "processing");
+  const missingCount = scenes.filter((s) => !isSceneReady(s)).length;
 
   return (
     <div className="gemini-generator">
@@ -301,12 +375,12 @@ export default function GeminiVideoPage() {
               </button>
             </div>
             <button className="btn" onClick={resetAll}>
-              <RotateCcw size={14} /> Restablecer
+              <RotateCcw size={14} /> Restablecer todo
             </button>
           </div>
         </header>
 
-        {/* API key */}
+        {/* Ajustes globales */}
         <section className="card settings-bar">
           <label className="sfield grow">
             <span>API Key de kie.ai</span>
@@ -317,275 +391,205 @@ export default function GeminiVideoPage() {
               onChange={(e) => setApiKey(e.target.value)}
             />
           </label>
+          <label className="sfield">
+            <span>Aspecto</span>
+            <select value={settings.aspect_ratio} onChange={(e) => setSettings((s) => ({ ...s, aspect_ratio: e.target.value }))}>
+              {ASPECTS.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </label>
+          <label className="sfield">
+            <span>Resolución</span>
+            <select value={settings.resolution} onChange={(e) => setSettings((s) => ({ ...s, resolution: e.target.value }))}>
+              {RESOLUTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </label>
+          <label className="sfield">
+            <span>Seed (opcional)</span>
+            <input
+              type="number" min={0} max={2147483647} placeholder="auto" style={{ width: 120 }}
+              value={settings.seed}
+              onChange={(e) => setSettings((s) => ({ ...s, seed: e.target.value }))}
+            />
+          </label>
         </section>
 
-        {/* Prompt */}
+        {/* Guión */}
         <section className="card">
-          <div className="row-between">
-            <h2>Prompt</h2>
-            <span className="hint" style={{ margin: 0 }}>{prompt.length}/20000</span>
-          </div>
+          <h2>Guión</h2>
           <textarea
             className="prompt"
-            rows={5}
-            placeholder="Describí el video: escena, estilo, lenguaje de cámara, acciones del personaje…"
-            value={prompt}
-            maxLength={20000}
-            disabled={busy}
-            onChange={(e) => setPrompt(e.target.value)}
+            rows={6}
+            placeholder='Pegá tu guión acá… (cada bloque tipo "Escena 1 — Imagen 1 — 9 segundos")'
+            value={bulkText}
+            onChange={(e) => setBulkText(e.target.value)}
+            onPaste={handlePaste}
           />
-        </section>
-
-        {/* Cuota */}
-        <section className="card quota-bar">
-          <div className="quota-info">
-            <strong>Cuota de slots:</strong> {usedSlots}/7 usados
-            <span className="quota-detail"> · imagen = 1 · video = 2 · character ID = 1</span>
-          </div>
-          <div className="quota-track">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <span key={i} className={"quota-dot" + (i < usedSlots ? " filled" : "")} />
-            ))}
+          <p className="hint">Gemini solo permite 4, 6, 8 o 10s: las duraciones del guión se ajustan al valor permitido más cercano (9s → 10s).</p>
+          <div className="row-between" style={{ marginTop: 10, marginBottom: 0, justifyContent: "flex-end" }}>
+            <button className="btn primary" onClick={importScript}>✂ Separar</button>
           </div>
         </section>
 
-        {/* Imágenes + Video */}
+        {/* Imágenes */}
         <section
           className={"card" + (fileDropActive ? " file-drop-active" : "")}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
+          onDragOver={handleFileDragOver}
+          onDragLeave={handleFileDragLeave}
+          onDrop={handleFileDrop}
         >
           <div className="row-between">
             <h2>Imágenes de referencia ({images.length}/{MAX_IMAGES})</h2>
-            <span className="hint" style={{ margin: 0 }}>{slotsLeft} slot(s) libre(s)</span>
           </div>
-          <p className="hint">Arrastrá imágenes o un video acá, o usá los botones. Cada imagen ocupa 1 slot; el video ocupa 2.</p>
-
+          {images.length < MAX_IMAGES && (
+            <p className="hint">Arrastrá imágenes desde tu PC hasta acá, o usá <strong>+ Agregar</strong>. {"El orden define \"Imagen 1\", \"Imagen 2\", etc."}</p>
+          )}
           <div className="images">
             {images.map((img, idx) => (
               <div className="thumb" key={img.id}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={img.preview} alt={img.name} />
-                <div className="thumb-tag">Img {idx + 1}</div>
-                <button className="thumb-x" onClick={() => removeImage(img.id)} title="Quitar" disabled={busy}>✕</button>
+                <div className="thumb-tag">Imagen {idx + 1}</div>
+                <button className="thumb-x" onClick={() => removeImage(img.id)} title="Quitar">✕</button>
                 <div className={"thumb-state " + (img.error ? "err" : img.url ? "ok" : "load")}>
                   {img.uploading ? "Subiendo…" : img.error ? "Error" : "Subida ✓"}
                 </div>
               </div>
             ))}
-            {images.length < MAX_IMAGES && slotsLeft > 0 && !busy && (
-              <button className="thumb add" onClick={() => imgRef.current?.click()}>
-                <Plus size={18} /> Imagen
-              </button>
+            {images.length < MAX_IMAGES && (
+              <button className="thumb add" onClick={() => fileRef.current?.click()}>+ Agregar</button>
             )}
           </div>
           <input
-            ref={imgRef}
+            ref={fileRef}
             type="file"
             accept="image/png,image/jpeg,image/webp"
             multiple
             hidden
-            onChange={(e) => handleImageFiles(e.target.files)}
+            onChange={(e) => handleFiles(e.target.files)}
           />
+          {images.some((i) => i.error) && (
+            <p className="hint err">Alguna imagen no se pudo subir. Verificá tu API key y que pese menos de 20MB.</p>
+          )}
+        </section>
 
-          {/* Video */}
-          <div className="video-block">
-            <div className="row-between">
-              <h2 style={{ marginBottom: 0 }}>Video de origen (opcional)</h2>
-              {!video && slotsLeft >= 2 && !busy && (
-                <button className="btn" onClick={() => videoRef.current?.click()}>
-                  <Film size={14} /> Subir video
-                </button>
-              )}
+        {/* Escenas */}
+        <section className="card">
+          <div className="row-between">
+            <h2>Escenas ({scenes.length})</h2>
+            <div className="run-all">
+              {missingCount > 0 && <span className="warn-pill">⚠ {missingCount} sin imagen</span>}
+              <button className="btn" onClick={downloadAll} disabled={downloadingAll || !scenes.some((s) => s.videoUrls?.length > 0)}>
+                <Download size={14} /> {downloadingAll ? "Preparando…" : "Descargar todo"}
+              </button>
+              <button className="btn" onClick={addScene}>+ Agregar escena</button>
+              <button className="btn primary" disabled={running || anyProcessing} onClick={runAll}>
+                {running || anyProcessing ? "Generando…" : "▶ Generar todos"}
+              </button>
             </div>
-            <p className="hint">Máx 1 video (≤100MB). El recorte no puede superar 10s. Con video, la duración la decide el modelo.</p>
-            <input
-              ref={videoRef}
-              type="file"
-              accept="video/mp4,video/quicktime,video/webm"
-              hidden
-              onChange={(e) => handleVideoFile(e.target.files)}
-            />
-            {video && (
-              <div className="video-item">
-                <div className="video-preview">
-                  {video.preview ? <video src={video.preview} controls preload="metadata" /> : null}
-                  <div className={"thumb-state " + (video.error ? "err" : video.url ? "ok" : "load")}>
-                    {video.uploading ? "Subiendo…" : video.error ? "Error" : "Subido ✓"}
-                  </div>
-                </div>
-                <div className="video-trim">
-                  <div className="video-name">{video.name}</div>
-                  <label>
-                    Start (s)
-                    <input
-                      type="number" min={0} step={1} value={video.start} disabled={busy}
-                      onChange={(e) => setVideo((v) => ({ ...v, start: Number(e.target.value) }))}
-                    />
-                  </label>
-                  <label>
-                    Ends (s)
-                    <input
-                      type="number" min={0} step={1} value={video.ends} disabled={busy}
-                      onChange={(e) => setVideo((v) => ({ ...v, ends: Number(e.target.value) }))}
-                    />
-                  </label>
-                  <button className="btn" onClick={removeVideo} disabled={busy}>
-                    <X size={14} /> Quitar
-                  </button>
-                </div>
-                {video.error && <div className="scene-err">{video.error}</div>}
-                {Number(video.ends) - Number(video.start) > 10 && (
-                  <div className="scene-warn">⚠ El recorte supera 10s; se ajustará automáticamente.</div>
-                )}
-              </div>
+          </div>
+
+          <div className="scenes">
+            {scenes.map((scene) => (
+              <SceneCard
+                key={scene.id}
+                scene={scene}
+                images={images}
+                onChange={(patch) => patchScene(scene.id, patch)}
+                onRun={() => runScene(scene)}
+                onRemove={() => removeScene(scene.id)}
+              />
+            ))}
+            {scenes.length === 0 && (
+              <button className="btn" onClick={addScene} style={{ alignSelf: "flex-start" }}>
+                + Agregar la primera escena
+              </button>
             )}
           </div>
         </section>
-
-        {/* IDs (audio / character) */}
-        <section className="card">
-          <div className="ids-grid">
-            <div className="ids-col">
-              <div className="row-between">
-                <h2>Audio IDs ({audioIds.length}/{MAX_AUDIO})</h2>
-                <button className="btn" disabled={audioIds.length >= MAX_AUDIO || busy} onClick={() => addId(setAudioIds, audioIds, MAX_AUDIO)}>
-                  <Plus size={14} /> Agregar
-                </button>
-              </div>
-              <p className="hint">IDs generados por gemini-omni-audio (narración, diálogo, música).</p>
-              {audioIds.map((val, idx) => (
-                <div className="id-row" key={idx}>
-                  <input
-                    placeholder="audio_01hx8p0demo" value={val} disabled={busy}
-                    onChange={(e) => patchId(setAudioIds, idx, e.target.value)}
-                  />
-                  <button className="id-del" onClick={() => removeId(setAudioIds, idx)} disabled={busy}>✕</button>
-                </div>
-              ))}
-              {audioIds.length === 0 && <p className="hint muted-empty">Sin audio IDs.</p>}
-            </div>
-
-            <div className="ids-col">
-              <div className="row-between">
-                <h2>Character IDs ({characterIds.length}/{MAX_CHARS})</h2>
-                <button
-                  className="btn"
-                  disabled={characterIds.length >= MAX_CHARS || slotsLeft <= 0 || busy}
-                  onClick={() => addId(setCharacterIds, characterIds, MAX_CHARS)}
-                >
-                  <Plus size={14} /> Agregar
-                </button>
-              </div>
-              <p className="hint">IDs de gemini-omni-character. Cada uno ocupa 1 slot.</p>
-              {characterIds.map((val, idx) => (
-                <div className="id-row" key={idx}>
-                  <input
-                    placeholder="character_01hx8p0demo" value={val} disabled={busy}
-                    onChange={(e) => patchId(setCharacterIds, idx, e.target.value)}
-                  />
-                  <button className="id-del" onClick={() => removeId(setCharacterIds, idx)} disabled={busy}>✕</button>
-                </div>
-              ))}
-              {characterIds.length === 0 && <p className="hint muted-empty">Sin character IDs.</p>}
-            </div>
-          </div>
-        </section>
-
-        {/* Ajustes */}
-        <section className="card">
-          <h2>Ajustes</h2>
-          <div className="settings">
-            <div className="selector">
-              <span>Duración (s){video?.url ? " · la decide el modelo con video" : ""}</span>
-              <div className="pills">
-                {DURATIONS.map((d) => (
-                  <button
-                    key={d}
-                    className={"pill" + (settings.duration === d ? " active" : "")}
-                    disabled={busy}
-                    onClick={() => setSettings((s) => ({ ...s, duration: d }))}
-                  >
-                    {d}s
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="selector">
-              <span>Aspect ratio</span>
-              <div className="pills">
-                {ASPECTS.map((a) => (
-                  <button
-                    key={a}
-                    className={"pill" + (settings.aspect_ratio === a ? " active" : "")}
-                    disabled={busy}
-                    onClick={() => setSettings((s) => ({ ...s, aspect_ratio: a }))}
-                  >
-                    {a}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="selector">
-              <span>Resolución</span>
-              <div className="pills">
-                {RESOLUTIONS.map((r) => (
-                  <button
-                    key={r}
-                    className={"pill" + (settings.resolution === r ? " active" : "")}
-                    disabled={busy}
-                    onClick={() => setSettings((s) => ({ ...s, resolution: r }))}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label className="sfield">
-              <span>Seed (opcional)</span>
-              <input
-                type="number" min={0} max={2147483647} placeholder="auto"
-                value={settings.seed} disabled={busy}
-                onChange={(e) => setSettings((s) => ({ ...s, seed: e.target.value }))}
-                style={{ width: 140 }}
-              />
-            </label>
-          </div>
-        </section>
-
-        {/* Generar + resultado */}
-        <section className={"card result-card " + status}>
-          <div className="row-between" style={{ marginBottom: 12 }}>
-            <div className="result-status">
-              {cost != null && <span className="cost-pill">−{cost} créditos</span>}
-              {taskId && <span className="taskid">task: {taskId} {rawState && `(${rawState})`}</span>}
-            </div>
-            <button className="btn primary big" disabled={busy || anyUploading} onClick={generate}>
-              {busy ? "Generando…" : "▶ Generar video"}
-            </button>
-          </div>
-
-          {error && <div className="scene-err">{error}</div>}
-
-          {busy && (
-            <div className="loading-note">Generando… esto puede tardar 1-3 minutos. No cierres la pestaña.</div>
-          )}
-
-          {videoUrls.length > 0 && (
-            <div className="results">
-              {videoUrls.map((u, i) => (
-                <div key={i} className="result">
-                  <video src={u} controls preload="metadata" />
-                  <a href={u} target="_blank" rel="noreferrer" download>
-                    <Download size={13} /> Descargar video
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
       </div>
+    </div>
+  );
+}
+
+function SceneCard({ scene, images, onChange, onRun, onRemove }) {
+  const busy = scene.status === "processing";
+  const img = images[scene.imageIndex];
+  const imgReady = Boolean(img && img.url);
+  const imgMsg = !img
+    ? `Falta subir la Imagen ${scene.imageIndex + 1}`
+    : img.uploading
+    ? `La Imagen ${scene.imageIndex + 1} todavía se está subiendo…`
+    : img.error
+    ? `La Imagen ${scene.imageIndex + 1} falló al subir`
+    : "";
+
+  return (
+    <div className={"scene " + scene.status + (imgReady ? "" : " missing-img")}>
+      <div className="scene-head">
+        <strong>{scene.title}</strong>
+        <div className="scene-head-right">
+          {scene.cost != null && <span className="cost-pill">−{scene.cost} créditos</span>}
+          <span className={"badge " + scene.status}>{STATE_LABEL[scene.status]}</span>
+          {onRemove && (
+            <button className="scene-del" onClick={onRemove} disabled={busy} title="Borrar escena">✕</button>
+          )}
+        </div>
+      </div>
+
+      <div className="scene-controls">
+        <label>
+          Duración (s)
+          <select value={scene.duration} disabled={busy} onChange={(e) => onChange({ duration: Number(e.target.value) })}>
+            {GEMINI_DURATIONS.map((d) => <option key={d} value={d}>{d}s</option>)}
+          </select>
+        </label>
+        <label>
+          Imagen
+          <select
+            className={imgReady ? "" : "input-err"}
+            value={scene.imageIndex}
+            disabled={busy}
+            onChange={(e) => onChange({ imageIndex: Number(e.target.value) })}
+          >
+            {images.length === 0 && <option value={0}>—</option>}
+            {images.map((im, idx) => (
+              <option key={im.id} value={idx}>Imagen {idx + 1}</option>
+            ))}
+            {!img && <option value={scene.imageIndex}>Imagen {scene.imageIndex + 1} (falta)</option>}
+          </select>
+        </label>
+        <button className="btn" disabled={busy || !imgReady} onClick={onRun} title={imgMsg}>
+          {busy ? "…" : "Generar"}
+        </button>
+      </div>
+
+      {!imgReady && <div className="scene-warn">⚠ {imgMsg}</div>}
+
+      <textarea
+        className="prompt"
+        rows={5}
+        value={scene.prompt}
+        disabled={busy}
+        onChange={(e) => onChange({ prompt: e.target.value })}
+      />
+
+      {scene.taskId && (
+        <div className="taskid">task: {scene.taskId} {scene.rawState && `(${scene.rawState})`}</div>
+      )}
+      {scene.error && <div className="scene-err">{scene.error}</div>}
+
+      {scene.videoUrls?.length > 0 && (
+        <div className="results">
+          {scene.videoUrls.map((u, i) => (
+            <div key={i} className="result">
+              <video src={u} controls preload="metadata" />
+              <a href={u} target="_blank" rel="noreferrer" download>
+                <Download size={13} /> Descargar video
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

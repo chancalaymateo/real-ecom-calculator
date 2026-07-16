@@ -25,7 +25,7 @@ export const TOOLS = [
     slug: "gemini-video",
     href: "/gemini-video",
     title: "Gemini Omni Video",
-    desc: "Generá videos con Gemini Omni: prompt + imágenes, video de origen, audio y character IDs.",
+    desc: "Pegá tu guión y generá cada escena como video con Gemini Omni (con voz y lip sync) desde tus imágenes.",
     tag: "Gemini · Kie.ai",
     icon: "Video",
     ready: true,
