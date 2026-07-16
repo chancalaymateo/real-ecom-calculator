@@ -5,10 +5,15 @@ import JSZip from "jszip";
 import { ArrowLeft, Download, RotateCcw, RefreshCw } from "lucide-react";
 import { parseScript } from "../clips/scenes.js";
 import { uploadFile, generateAndWait, getCredits } from "./api.js";
-import "./gemini.css";
+import "./veo.css";
 
-const GEMINI_DURATIONS = [4, 6, 8, 10];
-const ASPECTS = ["16:9", "9:16"];
+const MODELS = [
+  { value: "veo3_fast", label: "Veo 3.1 Fast" },
+  { value: "veo3", label: "Veo 3.1 Quality" },
+  { value: "veo3_lite", label: "Veo 3.1 Lite" },
+];
+const VEO_DURATIONS = [4, 6, 8];
+const ASPECTS = ["16:9", "9:16", "Auto"];
 const RESOLUTIONS = ["720p", "1080p", "4k"];
 const MAX_IMAGES = 7;
 
@@ -20,22 +25,23 @@ const STATE_LABEL = {
 };
 
 const DEFAULT_SETTINGS = {
-  aspect_ratio: "9:16",
+  model: "veo3_fast",
+  aspect_ratio: "16:9",
   resolution: "720p",
-  seed: "",
+  watermark: "",
+  enableTranslation: false,
 };
 
-const STORAGE_KEY = "gemini_video_state_v1";
+const STORAGE_KEY = "veo_video_state_v1";
 
-// Gemini solo acepta 4, 6, 8 o 10s. Ajustamos al permitido más cercano.
-// En empate (ej. 9s) redondeamos hacia arriba para no cortar el diálogo.
+// Veo solo acepta 4, 6 u 8s. Ajustamos al permitido más cercano.
 function snapDuration(value) {
   const n = Number(value) || 8;
-  return GEMINI_DURATIONS.reduce((best, val) => {
+  return VEO_DURATIONS.reduce((best, val) => {
     const d = Math.abs(val - n);
     const bd = Math.abs(best - n);
     return d < bd || (d === bd && val > best) ? val : best;
-  }, GEMINI_DURATIONS[0]);
+  }, VEO_DURATIONS[0]);
 }
 
 function slugifyFilename(value) {
@@ -111,7 +117,7 @@ function withRuntime(s, idx) {
   };
 }
 
-export default function GeminiVideoPage() {
+export default function VeoVideoPage() {
   const [apiKey, setApiKey] = useState("");
   const [images, setImages] = useState([]); // {id, name, preview, url, uploading, error}
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -236,7 +242,7 @@ export default function GeminiVideoPage() {
     const parsed = parseScript(bulkText);
     if (!parsed.length) {
       alert(
-        'No pude reconocer ningún bloque.\nCada uno tiene que empezar con algo tipo:\n"Escena 1 — Imagen 1 — 9 segundos"'
+        'No pude reconocer ningún bloque.\nCada uno tiene que empezar con algo tipo:\n"Escena 1 — Imagen 1 — 8 segundos"'
       );
       return;
     }
@@ -287,10 +293,12 @@ export default function GeminiVideoPage() {
         {
           prompt: scene.prompt,
           imageUrls: [img.url],
+          model: settings.model,
           duration: String(scene.duration),
           aspect_ratio: settings.aspect_ratio,
           resolution: settings.resolution,
-          seed: settings.seed,
+          watermark: settings.watermark,
+          enableTranslation: settings.enableTranslation,
         },
         apiKey,
         { onUpdate: (u) => patchScene(scene.id, { taskId: u.taskId, rawState: u.rawState || "" }) }
@@ -343,7 +351,7 @@ export default function GeminiVideoPage() {
     setDownloadingAll(true);
     try {
       const blob = await buildScenesZip(readyScenes);
-      triggerDownload(blob, "gemini-videos-por-escena.zip");
+      triggerDownload(blob, "veo-videos-por-escena.zip");
     } catch (err) {
       alert(String(err.message || err));
     } finally {
@@ -355,14 +363,14 @@ export default function GeminiVideoPage() {
   const missingCount = scenes.filter((s) => !isSceneReady(s)).length;
 
   return (
-    <div className="gemini-generator">
+    <div className="veo-generator">
       <div className="app">
         <header className="g-header">
           <div>
             <Link href="/" className="back-link">
               <ArrowLeft size={15} /> Volver al portal
             </Link>
-            <h1>🎥 Gemini Omni Video</h1>
+            <h1>🎬 Veo 3.1 Video</h1>
           </div>
           <div className="header-right">
             <div className="balance" title="Créditos disponibles en tu cuenta de Kie.ai">
@@ -392,6 +400,12 @@ export default function GeminiVideoPage() {
             />
           </label>
           <label className="sfield">
+            <span>Modelo</span>
+            <select value={settings.model} onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}>
+              {MODELS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </label>
+          <label className="sfield">
             <span>Aspecto</span>
             <select value={settings.aspect_ratio} onChange={(e) => setSettings((s) => ({ ...s, aspect_ratio: e.target.value }))}>
               {ASPECTS.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -404,12 +418,20 @@ export default function GeminiVideoPage() {
             </select>
           </label>
           <label className="sfield">
-            <span>Seed (opcional)</span>
+            <span>Watermark (opcional)</span>
             <input
-              type="number" min={0} max={2147483647} placeholder="auto" style={{ width: 120 }}
-              value={settings.seed}
-              onChange={(e) => setSettings((s) => ({ ...s, seed: e.target.value }))}
+              type="text" placeholder="MyBrand" style={{ width: 140 }}
+              value={settings.watermark}
+              onChange={(e) => setSettings((s) => ({ ...s, watermark: e.target.value }))}
             />
+          </label>
+          <label className="sfield check">
+            <input
+              type="checkbox"
+              checked={settings.enableTranslation}
+              onChange={(e) => setSettings((s) => ({ ...s, enableTranslation: e.target.checked }))}
+            />
+            <span>Traducir prompt a inglés</span>
           </label>
         </section>
 
@@ -419,12 +441,12 @@ export default function GeminiVideoPage() {
           <textarea
             className="prompt"
             rows={6}
-            placeholder='Pegá tu guión acá… (cada bloque tipo "Escena 1 — Imagen 1 — 9 segundos")'
+            placeholder='Pegá tu guión acá… (cada bloque tipo "Escena 1 — Imagen 1 — 8 segundos")'
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
             onPaste={handlePaste}
           />
-          <p className="hint">Gemini solo permite 4, 6, 8 o 10s: las duraciones del guión se ajustan al valor permitido más cercano (9s → 10s).</p>
+          <p className="hint">Veo solo permite 4, 6 u 8s: las duraciones del guión se ajustan al valor permitido más cercano. Cada escena usa 1 sola imagen (no primer/último frame).</p>
           <div className="row-between" style={{ marginTop: 10, marginBottom: 0, justifyContent: "flex-end" }}>
             <button className="btn primary" onClick={importScript}>✂ Separar</button>
           </div>
@@ -468,7 +490,7 @@ export default function GeminiVideoPage() {
             onChange={(e) => handleFiles(e.target.files)}
           />
           {images.some((i) => i.error) && (
-            <p className="hint err">Alguna imagen no se pudo subir. Verificá tu API key y que pese menos de 20MB.</p>
+            <p className="hint err">Alguna imagen no se pudo subir. Verificá tu API key y que pese menos de 10MB.</p>
           )}
         </section>
 
@@ -540,7 +562,7 @@ function SceneCard({ scene, images, onChange, onRun, onRemove }) {
         <label>
           Duración (s)
           <select value={scene.duration} disabled={busy} onChange={(e) => onChange({ duration: Number(e.target.value) })}>
-            {GEMINI_DURATIONS.map((d) => <option key={d} value={d}>{d}s</option>)}
+            {VEO_DURATIONS.map((d) => <option key={d} value={d}>{d}s</option>)}
           </select>
         </label>
         <label>

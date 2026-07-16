@@ -1,0 +1,182 @@
+/* Estilos del generador Veo 3.1.
+   Scopeado bajo .veo-generator para no chocar con el resto del portal. */
+.veo-generator {
+  --bg: #0b0f1a;
+  --card: #131a2b;
+  --card2: #0f1626;
+  --border: #23304d;
+  --text: #e6ecf7;
+  --muted: #8ea0c0;
+  --accent: #3b82f6;
+  --ok: #2ecc71;
+  --err: #ff5c6c;
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+.veo-generator * { box-sizing: border-box; }
+
+.veo-generator .app { max-width: 920px; margin: 0 auto; padding: 24px 18px 64px; }
+.veo-generator .back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--muted); font-size: 13px; font-weight: 600; margin-bottom: 6px;
+}
+.veo-generator .back-link:hover { color: var(--text); }
+.veo-generator header h1 { margin: 0; font-size: 24px; color: var(--text); }
+.veo-generator h2 { font-size: 15px; margin: 0 0 12px; color: var(--text); }
+
+/* header con balance + reset */
+.veo-generator .g-header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.veo-generator .header-right { display: flex; align-items: center; gap: 10px; }
+.veo-generator .balance {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 12px;
+}
+.veo-generator .balance-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.veo-generator .balance-value { font-size: 14px; font-weight: 700; color: var(--ok); }
+.veo-generator .icon-btn {
+  background: transparent; border: none; color: var(--muted); cursor: pointer;
+  display: flex; align-items: center; padding: 2px; border-radius: 6px;
+}
+.veo-generator .icon-btn:hover:not(:disabled) { color: var(--text); }
+.veo-generator .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
+.veo-generator .spin { animation: veospin .8s linear infinite; }
+@keyframes veospin { to { transform: rotate(360deg); } }
+
+/* barra de ajustes compacta */
+.veo-generator .settings-bar {
+  display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding: 14px 18px;
+}
+.veo-generator .sfield { display: flex; flex-direction: column; gap: 5px; }
+.veo-generator .sfield.grow { flex: 1; min-width: 220px; }
+.veo-generator .sfield > span { font-size: 12px; color: var(--muted); }
+.veo-generator .sfield select { min-width: 92px; }
+.veo-generator .sfield.check { flex-direction: row; align-items: center; gap: 7px; padding-bottom: 9px; }
+.veo-generator .sfield.check > span { font-size: 12px; }
+.veo-generator .cost-pill {
+  font-size: 11px; font-weight: 700; color: #ffcf7a;
+  background: rgba(255, 178, 122, .12); border: 1px solid #5a3a26;
+  padding: 2px 8px; border-radius: 20px;
+}
+
+.veo-generator .card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.veo-generator input,
+.veo-generator select,
+.veo-generator textarea {
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 11px;
+  font-size: 14px;
+  font-family: inherit;
+}
+.veo-generator input:focus,
+.veo-generator select:focus,
+.veo-generator textarea:focus { outline: 1px solid var(--accent); }
+
+/* imágenes */
+.veo-generator .images { display: flex; gap: 12px; flex-wrap: wrap; }
+.veo-generator .thumb {
+  position: relative; width: 120px; height: 150px;
+  border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--border); background: var(--card2);
+}
+.veo-generator .thumb img { width: 100%; height: 100%; object-fit: cover; }
+.veo-generator .thumb.add {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); cursor: pointer; font-size: 14px;
+}
+.veo-generator .thumb.add:hover { color: var(--text); border-color: var(--accent); }
+.veo-generator .thumb-tag {
+  position: absolute; top: 6px; left: 6px;
+  background: rgba(0,0,0,.6); padding: 2px 7px; border-radius: 6px; font-size: 11px;
+}
+.veo-generator .thumb-x {
+  position: absolute; top: 6px; right: 6px;
+  background: rgba(0,0,0,.6); border: none; color: #fff; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 6px;
+}
+.veo-generator .thumb-state {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  font-size: 11px; text-align: center; padding: 3px; background: rgba(0,0,0,.6);
+}
+.veo-generator .thumb-state.ok { color: var(--ok); }
+.veo-generator .thumb-state.err { color: var(--err); }
+.veo-generator .thumb-state.load { color: var(--muted); }
+
+/* soltar archivos para subir */
+.veo-generator .card.file-drop-active {
+  border-color: var(--accent);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+.veo-generator .card.file-drop-active * { pointer-events: none; }
+
+.veo-generator .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+.veo-generator .hint.err { color: var(--err); }
+.veo-generator .row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+
+/* botones */
+.veo-generator .btn {
+  background: var(--card2); border: 1px solid var(--border); color: var(--text);
+  padding: 9px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.veo-generator .btn:hover:not(:disabled) { border-color: var(--accent); }
+.veo-generator .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.veo-generator .btn:disabled { opacity: .55; cursor: not-allowed; }
+
+/* escenas */
+.veo-generator .scenes { display: flex; flex-direction: column; gap: 14px; }
+.veo-generator .scene {
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px;
+}
+.veo-generator .scene.processing { border-color: var(--accent); }
+.veo-generator .scene.success { border-color: var(--ok); }
+.veo-generator .scene.fail { border-color: var(--err); }
+.veo-generator .scene-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.veo-generator .scene-head-right { display: flex; align-items: center; gap: 8px; }
+.veo-generator .scene-del {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.veo-generator .scene-del:hover:not(:disabled) { border-color: var(--err); color: var(--err); }
+.veo-generator .scene-del:disabled { opacity: .4; cursor: not-allowed; }
+.veo-generator .badge { font-size: 12px; padding: 3px 9px; border-radius: 20px; background: #1c2740; color: var(--muted); }
+.veo-generator .badge.processing { color: var(--accent); }
+.veo-generator .badge.success { color: var(--ok); }
+.veo-generator .badge.fail { color: var(--err); }
+
+.veo-generator .scene-controls { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 10px; flex-wrap: wrap; }
+.veo-generator .scene-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+
+.veo-generator .scene.missing-img { border-color: #7a3b2e; background: #1a1210; }
+.veo-generator .scene-warn { color: #ffb27a; font-size: 12.5px; margin-top: 8px; font-weight: 600; }
+.veo-generator .input-err { border-color: var(--err) !important; }
+
+.veo-generator .run-all { display: flex; align-items: center; gap: 10px; }
+.veo-generator .warn-pill {
+  font-size: 12px; color: #ffb27a; background: #2a1a12;
+  border: 1px solid #7a3b2e; padding: 4px 10px; border-radius: 20px;
+}
+
+.veo-generator .prompt { width: 100%; resize: vertical; line-height: 1.45; }
+.veo-generator .taskid { font-size: 11px; color: var(--muted); margin-top: 8px; font-family: monospace; }
+.veo-generator .scene-err { color: var(--err); font-size: 13px; margin-top: 8px; }
+
+.veo-generator .results { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+.veo-generator .result { display: flex; flex-direction: column; gap: 6px; }
+.veo-generator .result video { width: 240px; border-radius: 8px; background: #000; }
+.veo-generator .result a { color: var(--accent); font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
