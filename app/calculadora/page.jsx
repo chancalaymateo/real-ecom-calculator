@@ -8,14 +8,14 @@ const fmt    = (n) => new Intl.NumberFormat("es-AR", { style: "currency", curren
 const fmtUSD = (n) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 const fmtPct = (n) => `${Number(n).toFixed(2)}%`;
 
-const STORAGE_KEY = "calc_v7";
+const STORAGE_KEY = "calc_v8";
 const PRESETS_KEY = "calc_presets_v1";
 
 const BASE_FEE_OPTIONS = [
   { label: "Al instante",  key: "ml_fee_instante" },
-  { label: "10 días",      key: "ml_fee_10dias"   },
-  { label: "18 días",      key: "ml_fee_18dias"   },
-  { label: "35 días",      key: "ml_fee_35dias"   },
+  { label: "10 días",      key: "ml_fee_10dias", est: true },
+  { label: "18 días",      key: "ml_fee_18dias", est: true },
+  { label: "35 días",      key: "ml_fee_35dias", est: true },
 ];
 const CUOTAS_OPTIONS = [
   { label: "Sin cuotas",     key: null },
@@ -24,6 +24,12 @@ const CUOTAS_OPTIONS = [
 ];
 
 const MP_IVA = 21; // siempre 21%, no configurable
+
+// % de ventas que salen en cuotas sin interés. Acotado a [0,100].
+const clampMix = (v) => Math.min(100, Math.max(0, Number(v) || 0));
+// Cada oferta puede tener su propio mix; si no, hereda el global.
+const resolveMix = (override, globalMix) =>
+  override === undefined || override === null || override === "" ? globalMix : override;
 
 // ─── Money input with dot-formatted display ──────────────────
 function MoneyInput({ value, onChange, placeholder, className }) {
@@ -44,7 +50,7 @@ function MoneyInput({ value, onChange, placeholder, className }) {
 }
 
 // ─── Calculation ─────────────────────────────────────────────
-function calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts = [] }) {
+function calcOffer({ offer, settings, baseFeeKey, cuotasKey, cuotasMix = 100, cryptoRate, fixedCosts = [] }) {
   const salePrice   = Number(offer.sale_price)        || 0;
   const productCost = Number(offer.product_cost)      || 0;
   const shipping    = Number(settings.shipping_ars)   || 0;
@@ -52,7 +58,10 @@ function calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
   const commission  = Number(settings.commission_pct) || 0;
   const baseFee     = Number(settings[baseFeeKey])    || 0;
   const cuotasFee   = cuotasKey ? Number(settings[cuotasKey]) || 0 : 0;
-  const mpNet       = baseFee + cuotasFee;
+  // Solo una fracción de las ventas sale en cuotas: el costo de cuotas se
+  // pondera por ese mix en vez de aplicarse al 100% de las órdenes.
+  const mix         = clampMix(cuotasMix) / 100;
+  const mpNet       = baseFee + cuotasFee * mix;
   const mpIvaFactor = 1 + MP_IVA / 100;
   const costMP         = salePrice * (mpNet / 100) * mpIvaFactor;
   const costIIBB       = salePrice * iibb / 100;
@@ -66,13 +75,13 @@ function calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
   const cpaBeUSD   = cryptoRate > 0 ? disponible / cryptoRate : null;
   const cpaBeARS   = disponible;
   const margin     = salePrice > 0 ? (disponible / salePrice) * 100 : 0;
-  return { salePrice, productCost, shipping, iibb, commission, mpNet, costMP, costIIBB, costCommission, fixedTotal, totalCosts, disponible, cpaBeUSD, cpaBeARS, margin };
+  return { salePrice, productCost, shipping, iibb, commission, mpNet, mix, costMP, costIIBB, costCommission, fixedTotal, totalCosts, disponible, cpaBeUSD, cpaBeARS, margin };
 }
 
 // ─── Offer Card ──────────────────────────────────────────────
-function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts, cpaUnit, campaignCPA, onChange, onToggleHide }) {
+function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cuotasMix, cryptoRate, fixedCosts, cpaUnit, campaignCPA, onChange, onToggleHide }) {
   const hidden    = offer.hidden;
-  const c         = calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts });
+  const c         = calcOffer({ offer, settings, baseFeeKey, cuotasKey, cuotasMix: resolveMix(offer.cuotas_mix, cuotasMix), cryptoRate, fixedCosts });
 
   const objetivo  = Number(offer.cpa_be_target) || 0;
   const cpaBE_USD = c.cpaBeUSD;
@@ -130,9 +139,28 @@ function OfferCard({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCo
           </div>
         </div>
 
+        {cuotasKey && (
+          <div className={styles.inputRow}>
+            <label className={styles.inputLabel}>Mix en cuotas de esta oferta</label>
+            <div className={styles.moneyBox}>
+              <input
+                type="number" min="0" max="100" step="1"
+                value={offer.cuotas_mix ?? ""}
+                onChange={(e) => onChange({ ...offer, cuotas_mix: e.target.value === "" ? null : Number(e.target.value) })}
+                placeholder={`${clampMix(cuotasMix)} (global)`}
+                className={styles.moneyField}
+              />
+              <span className={styles.moneyPost}>%</span>
+            </div>
+          </div>
+        )}
+
         <div className={styles.breakdown}>
           <div className={styles.bRow}><span>Envío</span><span>{fmt(c.shipping)}</span></div>
-          <div className={styles.bRow}><span>MP {fmtPct(c.mpNet)} + IVA</span><span>{fmt(c.costMP)}</span></div>
+          <div className={styles.bRow}>
+            <span>MP {fmtPct(c.mpNet)} + IVA{cuotasKey && c.mix > 0 ? ` · ${Math.round(c.mix * 100)}% en cuotas` : ""}</span>
+            <span>{fmt(c.costMP)}</span>
+          </div>
           <div className={styles.bRow}><span>IIBB ({fmtPct(c.iibb)})</span><span>{fmt(c.costIIBB)}</span></div>
           {c.commission > 0 && <div className={styles.bRow}><span>Comisión ({fmtPct(c.commission)})</span><span>{fmt(c.costCommission)}</span></div>}
           {fixedCosts.filter((fc) => fc.amount).map((fc) => (
@@ -182,8 +210,9 @@ export default function CalculadoraPage() {
   const [showConfig, setShowConfig]   = useState(false);
   const [showFixed, setShowFixed]     = useState(false);
   const [showPresets, setShowPresets] = useState(false);
-  const [baseFeeKey, setBaseFeeKey]   = useState("ml_fee_10dias");
-  const [cuotasKey, setCuotasKey]     = useState(null);
+  const [baseFeeKey, setBaseFeeKey]   = useState("ml_fee_instante");
+  const [cuotasKey, setCuotasKey]     = useState("ml_cuotas_3");
+  const [cuotasMix, setCuotasMix]     = useState(59);
   const [cpaUnit, setCpaUnit]         = useState("usd");
   const [fixedCosts, setFixedCosts]   = useState([]);
   const [presets, setPresets]         = useState([]);
@@ -220,9 +249,11 @@ export default function CalculadoraPage() {
           if (loaded.cpaUnit)                 setCpaUnit(loaded.cpaUnit);
           if (loaded.fixedCosts)              setFixedCosts(loaded.fixedCosts);
           if (loaded.campaignCPA)             setCampaignCPA(loaded.campaignCPA);
+          if (loaded.cuotasMix !== undefined) setCuotasMix(loaded.cuotasMix);
         } else {
           setSettings(dbData.settings);
           setOffers(dbData.offers);
+          if (dbData.settings?.cuotas_mix_pct != null) setCuotasMix(Number(dbData.settings.cuotas_mix_pct));
         }
       } catch (e) {
         toast.error(e.message);
@@ -238,20 +269,21 @@ export default function CalculadoraPage() {
 
   // Auto-save to localStorage
   const getConfigSnapshot = useCallback(() => ({
-    settings, offers, baseFeeKey, cuotasKey, cpaUnit, fixedCosts, campaignCPA,
-  }), [settings, offers, baseFeeKey, cuotasKey, cpaUnit, fixedCosts, campaignCPA]);
+    settings, offers, baseFeeKey, cuotasKey, cuotasMix, cpaUnit, fixedCosts, campaignCPA,
+  }), [settings, offers, baseFeeKey, cuotasKey, cuotasMix, cpaUnit, fixedCosts, campaignCPA]);
 
   useEffect(() => {
     if (!settings) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(getConfigSnapshot()));
-  }, [settings, offers, baseFeeKey, cuotasKey, cpaUnit, fixedCosts, campaignCPA, getConfigSnapshot]);
+  }, [settings, offers, baseFeeKey, cuotasKey, cuotasMix, cpaUnit, fixedCosts, campaignCPA, getConfigSnapshot]);
 
   // Reset
   async function handleReset() {
     try {
       const data = await loadFromDB();
       setSettings(data.settings); setOffers(data.offers);
-      setBaseFeeKey("ml_fee_10dias"); setCuotasKey(null); setCpaUnit("usd"); setFixedCosts([]); setCampaignCPA(0);
+      setBaseFeeKey("ml_fee_instante"); setCuotasKey("ml_cuotas_3"); setCpaUnit("usd"); setFixedCosts([]); setCampaignCPA(0);
+      setCuotasMix(data.settings?.cuotas_mix_pct != null ? Number(data.settings.cuotas_mix_pct) : 59);
       localStorage.removeItem(STORAGE_KEY);
       toast.success("Valores restablecidos");
     } catch (e) { toast.error(e.message); }
@@ -269,8 +301,9 @@ export default function CalculadoraPage() {
   }
   function loadPreset(p) {
     setSettings(p.settings); setOffers(p.offers || offers);
-    setBaseFeeKey(p.baseFeeKey || "ml_fee_10dias");
+    setBaseFeeKey(p.baseFeeKey || "ml_fee_instante");
     setCuotasKey(p.cuotasKey ?? null);
+    setCuotasMix(p.cuotasMix ?? 100);
     setCpaUnit(p.cpaUnit || "usd");
     setFixedCosts(p.fixedCosts || []);
     if (p.campaignCPA !== undefined) setCampaignCPA(p.campaignCPA);
@@ -293,7 +326,7 @@ export default function CalculadoraPage() {
   const updateSetting = (k, v) => setSettings((s) => ({ ...s, [k]: v }));
 
   const cryptoRate = dolar?.cripto?.venta || 0;
-  const mpNet      = settings ? Number(settings[baseFeeKey] || 0) + (cuotasKey ? Number(settings[cuotasKey] || 0) : 0) : 0;
+  const mpNet      = settings ? Number(settings[baseFeeKey] || 0) + (cuotasKey ? Number(settings[cuotasKey] || 0) * clampMix(cuotasMix) / 100 : 0) : 0;
   const mpEfect    = mpNet * (1 + MP_IVA / 100);
 
   if (loading) return (
@@ -347,6 +380,21 @@ export default function CalculadoraPage() {
                 {CUOTAS_OPTIONS.map((o) => <option key={o.key || "none"} value={o.key || ""}>{o.label}{o.key ? ` (+${fmtPct(settings?.[o.key] || 0)})` : ""}</option>)}
               </select>
             </div>
+            {cuotasKey && (
+              <div className={styles.configGroup}>
+                <label className={styles.configLabel}>Mix en cuotas: {clampMix(cuotasMix)}%</label>
+                <div className={styles.mixWrap}>
+                  <input
+                    type="range" min="0" max="100" step="1"
+                    value={clampMix(cuotasMix)}
+                    onChange={(e) => setCuotasMix(Number(e.target.value))}
+                    className={styles.mixSlider}
+                    title="Porcentaje de ventas que sale en cuotas sin interés"
+                  />
+                  <span className={styles.mixHint}>{100 - clampMix(cuotasMix)}% contado</span>
+                </div>
+              </div>
+            )}
             <div className={styles.configGroup}>
               <label className={styles.configLabel}>CPA campaña</label>
               <div className={styles.cpaCombo}>
@@ -387,10 +435,11 @@ export default function CalculadoraPage() {
             <div className={styles.configGrid}>
               <div>
                 <p className={styles.configSectionTitle}>Plazo acreditación MP (%)</p>
+                <p className={styles.configNote}>* estimado — sin liquidación de MP que lo confirme</p>
                 <div className={styles.configRow}>
                   {BASE_FEE_OPTIONS.map((o) => (
                     <label key={o.key} className={styles.configField}>
-                      <span>{o.label}</span>
+                      <span>{o.label}{o.est ? " *" : ""}</span>
                       <input type="number" step="0.01" value={settings[o.key] || ""} onChange={(e) => updateSetting(o.key, e.target.value)} className={styles.configInput} />
                     </label>
                   ))}
@@ -495,6 +544,7 @@ export default function CalculadoraPage() {
               settings={settings}
               baseFeeKey={baseFeeKey}
               cuotasKey={cuotasKey}
+              cuotasMix={cuotasMix}
               cryptoRate={cryptoRate}
               fixedCosts={fixedCosts}
               cpaUnit={cpaUnit}
@@ -519,7 +569,7 @@ export default function CalculadoraPage() {
                 </thead>
                 <tbody>
                   {offers.filter((o) => !o.hidden).map((offer) => {
-                    const c          = calcOffer({ offer, settings, baseFeeKey, cuotasKey, cryptoRate, fixedCosts });
+                    const c          = calcOffer({ offer, settings, baseFeeKey, cuotasKey, cuotasMix: resolveMix(offer.cuotas_mix, cuotasMix), cryptoRate, fixedCosts });
                     const objetivo   = Number(offer.cpa_be_target) || 0;
                     const cpaBE      = cpaUnit === "ars" ? c.cpaBeARS : c.cpaBeUSD;
                     const ok         = objetivo > 0 && c.cpaBeUSD !== null && c.cpaBeUSD >= objetivo;
