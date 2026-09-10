@@ -10,7 +10,9 @@ import "./gemini.css";
 const GEMINI_DURATIONS = [4, 6, 8, 10];
 const ASPECTS = ["16:9", "9:16"];
 const RESOLUTIONS = ["720p", "1080p", "4k"];
-const MAX_IMAGES = 7;
+const MAX_IMAGES = 30;
+// Subimos de a tandas para no encolar 30 requests de golpe contra Kie.
+const UPLOAD_CONCURRENCY = 3;
 
 const STATE_LABEL = {
   idle: "Sin generar",
@@ -122,6 +124,8 @@ export default function GeminiVideoPage() {
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [fileDropActive, setFileDropActive] = useState(false);
+  const [dragOverImageId, setDragOverImageId] = useState(null);
+  const dragImageRef = useRef(null);
   const fileRef = useRef(null);
   const balanceRef = useRef(null);
   const loaded = useRef(false);
@@ -189,25 +193,90 @@ export default function GeminiVideoPage() {
 
   async function handleFiles(fileList) {
     if (!apiKey) return alert("Primero cargá tu API key de kie.ai arriba.");
-    const files = Array.from(fileList)
-      .filter((f) => f.type.startsWith("image/"))
-      .slice(0, MAX_IMAGES - images.length);
-    for (const file of files) {
-      const id = nextId();
-      const preview = URL.createObjectURL(file);
-      setImages((prev) => [...prev, { id, name: file.name, preview, url: "", uploading: true, error: "" }]);
-      try {
-        const { url } = await uploadFile(file, apiKey);
-        patchImage(id, { url, uploading: false });
-      } catch (err) {
-        patchImage(id, { uploading: false, error: String(err.message || err) });
+    if (fileRef.current) fileRef.current.value = "";
+
+    const picked = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (!picked.length) return;
+    const room = MAX_IMAGES - images.length;
+    if (room <= 0) return alert(`Ya llegaste al máximo de ${MAX_IMAGES} imágenes.`);
+    const files = picked.slice(0, room);
+    if (files.length < picked.length) {
+      alert(`Entran ${room} imagen(es) más (máximo ${MAX_IMAGES}). Subo las primeras ${files.length}.`);
+    }
+
+    // Reservamos los lugares de una para que el orden no dependa de quién termina antes.
+    const queue = files.map((file) => ({ file, id: nextId(), preview: URL.createObjectURL(file) }));
+    setImages((prev) => [
+      ...prev,
+      ...queue.map((q) => ({ id: q.id, name: q.file.name, preview: q.preview, url: "", uploading: true, error: "" })),
+    ]);
+
+    let cursor = 0;
+    async function worker() {
+      while (cursor < queue.length) {
+        const item = queue[cursor++];
+        try {
+          const { url } = await uploadFile(item.file, apiKey);
+          patchImage(item.id, { url, uploading: false });
+        } catch (err) {
+          patchImage(item.id, { uploading: false, error: String(err.message || err) });
+        }
       }
     }
-    if (fileRef.current) fileRef.current.value = "";
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, queue.length) }, worker));
   }
 
   function removeImage(id) {
     setImages((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  // El orden de la lista es lo que numera "Imagen 1", "Imagen 2"… Reordenar mueve la foto
+  // de casillero: las escenas siguen apuntando al número que dice el guión.
+  function moveImage(from, to) {
+    setImages((prev) => {
+      if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  }
+
+  function handleThumbDragStart(e, id) {
+    dragImageRef.current = id;
+    e.dataTransfer.effectAllowed = "move";
+    // Firefox no arranca el drag si no hay datos asociados.
+    try {
+      e.dataTransfer.setData("text/plain", String(id));
+    } catch {}
+  }
+  function handleThumbDragOver(e, id) {
+    if (dragImageRef.current == null) return; // viene de afuera: lo maneja el drop de archivos
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    if (id !== dragOverImageId) setDragOverImageId(id);
+  }
+  function handleThumbDrop(e, id) {
+    if (dragImageRef.current == null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const fromId = dragImageRef.current;
+    dragImageRef.current = null;
+    setDragOverImageId(null);
+    setImages((prev) => {
+      const from = prev.findIndex((i) => i.id === fromId);
+      const to = prev.findIndex((i) => i.id === id);
+      if (from < 0 || to < 0 || from === to) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  }
+  function handleThumbDragEnd() {
+    dragImageRef.current = null;
+    setDragOverImageId(null);
   }
 
   function isFileDrag(e) {
@@ -440,18 +509,50 @@ export default function GeminiVideoPage() {
           <div className="row-between">
             <h2>Imágenes de referencia ({images.length}/{MAX_IMAGES})</h2>
           </div>
-          {images.length < MAX_IMAGES && (
-            <p className="hint">Arrastrá imágenes desde tu PC hasta acá, o usá <strong>+ Agregar</strong>. {"El orden define \"Imagen 1\", \"Imagen 2\", etc."}</p>
-          )}
+          <p className="hint">
+            {images.length < MAX_IMAGES ? (
+              <>Arrastrá imágenes desde tu PC hasta acá, o usá <strong>+ Agregar</strong>. </>
+            ) : (
+              <>Llegaste al máximo de {MAX_IMAGES} imágenes. </>
+            )}
+            {"El orden define \"Imagen 1\", \"Imagen 2\", etc.: arrastrá una miniatura sobre otra (o usá ◀ ▶) para reordenarlas."}
+          </p>
           <div className="images">
             {images.map((img, idx) => (
-              <div className="thumb" key={img.id}>
+              <div
+                className={"thumb" + (dragOverImageId === img.id ? " drag-over" : "")}
+                key={img.id}
+                draggable
+                onDragStart={(e) => handleThumbDragStart(e, img.id)}
+                onDragOver={(e) => handleThumbDragOver(e, img.id)}
+                onDrop={(e) => handleThumbDrop(e, img.id)}
+                onDragEnd={handleThumbDragEnd}
+                title="Arrastrá para reordenar"
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img.preview} alt={img.name} />
+                <img src={img.preview} alt={img.name} draggable={false} />
                 <div className="thumb-tag">Imagen {idx + 1}</div>
                 <button className="thumb-x" onClick={() => removeImage(img.id)} title="Quitar">✕</button>
-                <div className={"thumb-state " + (img.error ? "err" : img.url ? "ok" : "load")}>
-                  {img.uploading ? "Subiendo…" : img.error ? "Error" : "Subida ✓"}
+                <div className="thumb-foot">
+                  <button
+                    className="thumb-move"
+                    disabled={idx === 0}
+                    onClick={() => moveImage(idx, idx - 1)}
+                    title="Mover una posición antes"
+                  >
+                    ◀
+                  </button>
+                  <span className={"thumb-state " + (img.error ? "err" : img.url ? "ok" : "load")}>
+                    {img.uploading ? "Subiendo…" : img.error ? "Error" : "Subida ✓"}
+                  </span>
+                  <button
+                    className="thumb-move"
+                    disabled={idx === images.length - 1}
+                    onClick={() => moveImage(idx, idx + 1)}
+                    title="Mover una posición después"
+                  >
+                    ▶
+                  </button>
                 </div>
               </div>
             ))}
